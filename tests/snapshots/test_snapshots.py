@@ -7,14 +7,26 @@ Live-animation states (thinking spinner, active tool pulse) are excluded —
 they're inherently non-deterministic and would create flaky comparisons.
 We snapshot stable states only: idle, post-turn, modals, error.
 
+Snapshots are platform-dependent (font metrics, ANSI quirks) so they are
+skipped in CI. `make snapshot` / `make snapshot-update` run them locally.
+
 `snap_compare` is sync — these tests are not async.
 """
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from nx01_tui.tui.app import Nx01App
 from nx01_tui.tui.events import parse_event
 from tests.fixtures.sample_events import chunk, skill_loaded, turn_done
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("CI") == "true",
+    reason="snapshot SVGs are platform-dependent — run locally only",
+)
 
 _SIZE = (160, 40)
 

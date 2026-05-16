@@ -50,3 +50,6 @@ known-first-party = ["nx01_tui"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--strict-markers"
+markers = [
+    "snapshot: SVG snapshot regression tests — platform-dependent, skipped in CI",
+]

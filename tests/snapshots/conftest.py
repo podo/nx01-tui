@@ -1,4 +1,8 @@
-"""Fixtures for snapshot tests."""
+"""Fixtures for snapshot tests.
+
+Snapshot tests are platform-dependent (font metrics, ANSI quirks) so
+they're skipped in CI via a module-level pytestmark in test_snapshots.py.
+"""
 
 from __future__ import annotations
 
