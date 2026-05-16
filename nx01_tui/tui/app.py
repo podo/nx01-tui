@@ -346,6 +346,7 @@ class Nx01TuiApp(App):
         background: $surface-darken-1;
         align: left middle;
         padding: 0 1;
+        layer: 2;
     }
     #msg-input {
         width: 1fr;
@@ -354,6 +355,10 @@ class Nx01TuiApp(App):
         width: auto;
         padding: 0 1;
         color: $primary;
+    }
+    #cmd-palette {
+        dock: bottom;
+        layer: 1;
     }
     """
 
@@ -373,7 +378,6 @@ class Nx01TuiApp(App):
             yield Input(placeholder="send a message or /command…", id="msg-input")
             yield Label("— ▾", id="flavor-badge")
         yield CommandPalette(id="cmd-palette")
-        yield Footer()
 
     def on_mount(self) -> None:
         self.run_worker(self._sse_worker(), exclusive=True, name="sse")
@@ -386,27 +390,27 @@ class Nx01TuiApp(App):
             self.query_one("#flavor-badge", Label).update(f"{flavor} ▾")
 
     def on_key(self, event: Key) -> None:
-        if event.key not in ("Tab", "shift+tab"):
+        if event.key not in ("ctrl+left", "ctrl+right"):
             return
         palette = self.query_one("#cmd-palette", CommandPalette)
         if palette.is_open():
             return
         tabs = self.query_one("#tabs", TabbedContent)
-        tab_ids = list(tabs.query("ContentPane"))
-        if not tab_ids:
+        panes = list(tabs.query_one("ContentSwitcher").children)
+        if not panes:
             return
         current = tabs.active
         if current is None:
             return
-        idx = next((i for i, p in enumerate(tab_ids) if p.id == current), -1)
+        idx = next((i for i, p in enumerate(panes) if p.id == current), -1)
         if idx < 0:
             return
-        if event.key == "Tab":
-            next_idx = (idx + 1) % len(tab_ids)
-            tabs.active = tab_ids[next_idx].id
+        if event.key == "ctrl+right":
+            next_idx = (idx + 1) % len(panes)
+            tabs.active = panes[next_idx].id
         else:
-            prev_idx = (idx - 1) % len(tab_ids)
-            tabs.active = tab_ids[prev_idx].id
+            prev_idx = (idx - 1) % len(panes)
+            tabs.active = panes[prev_idx].id
 
     async def _sse_worker(self) -> None:
         url = f"{self._base_url}/events"
