@@ -51,6 +51,7 @@ def _host(url: str) -> str:
 
 # ─── Header ───────────────────────────────────────────────────────────────────
 
+
 class FleetHeader(Horizontal):
     """Titlebar split into left (status) and right (host + uptime)."""
 
@@ -103,10 +104,12 @@ class FleetHeader(Horizontal):
         if self._disconnected:
             left = f"[bold red]✗[/] disconnected — reconnecting in {self._reconnect_in}s…"
         else:
-            dots = "  ".join(
-                f"{_dot(s)} {n}" for n, s in self._flavor_statuses.items()
-            ) if self._flavor_statuses else ""
-            count = f"  [{dots}]" if dots else ""
+            dots = (
+                "  ".join(f"{_dot(s)} {n}" for n, s in self._flavor_statuses.items())
+                if self._flavor_statuses
+                else ""
+            )
+            count = f"  {dots}" if dots else ""
             left = f"[bold green]●[/] NX01 Fleet{count}"
 
         right = f"{self._host}  uptime {uptime}"
@@ -136,6 +139,7 @@ class FleetHeader(Horizontal):
 
 # ─── Key hints bar (replaces Footer) ──────────────────────────────────────────
 
+
 class KeyHints(Static):
     """One-line keybinding strip docked at the very bottom."""
 
@@ -162,6 +166,7 @@ class KeyHints(Static):
 
 
 # ─── Global empty state ────────────────────────────────────────────────────────
+
 
 class EmptyState(Static):
     """Shown when no flavor tabs exist yet."""
@@ -204,12 +209,14 @@ class EmptyState(Static):
             text = (
                 f"Connected to {self._host}\n\n"
                 f"Available flavors:  {flavor_list}\n\n"
-                "[dim]Send a message — or type [/][bold]@assistant hello[/][dim] to target a flavor[/]"
+                "[dim]Send a message — or type [/][bold]@assistant hello[/]"
+                "[dim] to target a flavor[/]"
             )
         self.update(text)
 
 
 # ─── Tool sidebar ──────────────────────────────────────────────────────────────
+
 
 class ToolSidebar(ScrollableContainer):
     """Scrollable tool call log for one flavor tab."""
@@ -277,6 +284,7 @@ class ToolSidebar(ScrollableContainer):
 
 # ─── Thinking block ────────────────────────────────────────────────────────────
 
+
 class _ThinkingBlock(Vertical):
     DEFAULT_CSS = """
     _ThinkingBlock { height: auto; padding: 0 1; }
@@ -289,6 +297,7 @@ class _ThinkingBlock(Vertical):
 
 
 # ─── Conversation pane ─────────────────────────────────────────────────────────
+
 
 class ConversationPane(Vertical):
     """Scrollable conversation with inline thinking stream."""
@@ -333,7 +342,7 @@ class ConversationPane(Vertical):
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="conv-scroll"):
-            yield RichLog(highlight=False, markup=True, auto_scroll=False, id="conv-log")
+            yield RichLog(highlight=False, markup=True, auto_scroll=False)
         yield Label(
             f"No messages yet — type below to chat with [bold]{self._flavor or 'a flavor'}[/]",
             classes="conv-empty",
@@ -354,7 +363,7 @@ class ConversationPane(Vertical):
         return self.query_one("#conv-scroll", ScrollableContainer)
 
     def _log(self) -> RichLog:
-        return self.query_one("#conv-log", RichLog)
+        return self.query_one("RichLog")
 
     def on_mouse_scroll_up(self, _: MouseScrollUp) -> None:
         sc = self._sc()
@@ -415,6 +424,7 @@ class ConversationPane(Vertical):
 
 # ─── Command palette ───────────────────────────────────────────────────────────
 
+
 class CommandPalette(Widget):
     """Slash command autocomplete overlay above the input bar."""
 
@@ -470,6 +480,7 @@ class CommandPalette(Widget):
 
 # ─── Main app ──────────────────────────────────────────────────────────────────
 
+
 class Nx01TuiApp(App):
     """NX01 fleet operator cockpit."""
 
@@ -478,9 +489,9 @@ class Nx01TuiApp(App):
         Binding("ctrl+2", "switch_tab(1)", "Tab 2", show=False),
         Binding("ctrl+3", "switch_tab(2)", "Tab 3", show=False),
         Binding("ctrl+4", "switch_tab(3)", "Tab 4", show=False),
-        Binding("end", "resume_scroll", "Resume scroll", show=False),
+        Binding("ctrl+end", "resume_scroll", "Resume scroll", show=False),
         Binding("escape", "handle_escape", "Esc", show=False),
-        Binding("q", "quit_if_empty", "Quit", show=False),
+        Binding("q", "quit_if_empty", "Quit", show=True),
     ]
 
     DEFAULT_CSS = """
@@ -582,7 +593,11 @@ class Nx01TuiApp(App):
                     async with client.stream("GET", url, headers=headers) as resp:
                         resp.raise_for_status()
                         backoff = 1
-                        self.call_later(self.query_one("#fleet-header", FleetHeader).set_connected)
+                        try:
+                            header = self.query_one("#fleet-header", FleetHeader)
+                            self.call_later(header.set_connected)
+                        except NoMatches:
+                            pass
                         _event_type = ""
                         data_lines: list[str] = []
                         async for line in resp.aiter_lines():
@@ -605,9 +620,12 @@ class Nx01TuiApp(App):
                 pass
 
             for countdown in range(backoff, 0, -1):
-                self.call_later(
-                    self.query_one("#fleet-header", FleetHeader).set_disconnected, countdown
-                )
+                try:
+                    self.call_later(
+                        self.query_one("#fleet-header", FleetHeader).set_disconnected, countdown
+                    )
+                except NoMatches:
+                    pass
                 await asyncio.sleep(1)
             backoff = min(backoff * 2, 30)
 

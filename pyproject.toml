@@ -25,6 +25,7 @@ dev = [
     "ruff==0.15.13",
     "mypy>=1.10",
     "textual-dev>=0.68",
+    "respx>=0.21",
 ]
 
 [tool.hatch.version]
