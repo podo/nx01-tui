@@ -13,6 +13,7 @@ from .chat_input import ChatInput
 from .conversation import ConversationView
 from .search_bar import SearchBar
 from .sidebar import MonitorSidebar
+from .slash_dropdown import SlashDropdown
 
 
 class FlavorPane(Horizontal):
@@ -39,6 +40,7 @@ class FlavorPane(Horizontal):
         with Vertical(id=f"conv-container-{self.flavor}"):
             yield SearchBar(id=f"search-{self.flavor}")
             yield ConversationView(id=f"conv-{self.flavor}")
+            yield SlashDropdown(id=f"slash-{self.flavor}")
             yield ChatInput(id=f"input-{self.flavor}")
         yield MonitorSidebar(flavor=self.flavor, id=f"sidebar-{self.flavor}")
 

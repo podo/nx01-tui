@@ -12,12 +12,31 @@ Provides a small API the App layer uses without poking at internals:
 from __future__ import annotations
 
 from textual.containers import VerticalScroll
+from textual.widgets import Static
 
 from .messages import AssistantMessage, UserMessage
 from .search_bar import SearchBar
 from .skill_block import SkillBlock
 from .thinking_block import ThinkingBlock
 from .tool_call_block import ToolCallBlock
+
+_EMPTY_HINT = (
+    "[bold]Welcome to nx01-tui[/]\n\n"
+    "[dim]Type a message and press [bold]ctrl+j[/] to send.\n"
+    "[bold]ctrl+p[/] command palette · [bold]?[/] help · [bold]q[/] quit[/]"
+)
+
+
+class _EmptyState(Static):
+    DEFAULT_CSS = """
+    _EmptyState {
+        content-align: center middle;
+        text-align: center;
+        color: $text-muted;
+        height: 1fr;
+        padding: 4 2;
+    }
+    """
 
 
 class ConversationView(VerticalScroll):
@@ -34,10 +53,21 @@ class ConversationView(VerticalScroll):
         self._active_thinking: ThinkingBlock | None = None
         self._active_assistant: AssistantMessage | None = None
         self._active_tools: dict[str, ToolCallBlock] = {}
+        self._empty_state: _EmptyState | None = None
+
+    def on_mount(self) -> None:
+        self._empty_state = _EmptyState(_EMPTY_HINT)
+        self.mount(self._empty_state)
+
+    def _clear_empty_state(self) -> None:
+        if self._empty_state is not None:
+            self._empty_state.remove()
+            self._empty_state = None
 
     # ── Public API ───────────────────────────────────────────────────
 
     def add_user_message(self, text: str) -> UserMessage:
+        self._clear_empty_state()
         widget = UserMessage(text)
         self.mount(widget)
         self.scroll_end(animate=False)
@@ -49,6 +79,7 @@ class ConversationView(VerticalScroll):
 
     def start_thinking(self) -> ThinkingBlock:
         if self._active_thinking is None:
+            self._clear_empty_state()
             self._active_thinking = ThinkingBlock()
             self.mount(self._active_thinking)
         return self._active_thinking
@@ -66,6 +97,7 @@ class ConversationView(VerticalScroll):
     def start_tool(self, tool: str, args: str = "", call_id: str = "") -> ToolCallBlock:
         if call_id and call_id in self._active_tools:
             return self._active_tools[call_id]
+        self._clear_empty_state()
         block = ToolCallBlock(tool=tool, args=args, call_id=call_id)
         if call_id:
             self._active_tools[call_id] = block

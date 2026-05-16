@@ -58,6 +58,7 @@ from .widgets import (
     ChatInput,
     FlavorPane,
     SearchBar,
+    SlashDropdown,
     StatusBar,
 )
 
@@ -196,13 +197,16 @@ class Nx01App(App):
         hdr = self.query_one(AppHeader)
         if message.kind == "connected":
             hdr.connected = True
+            hdr.reconnecting = False
             self._connected = True
             self.notify("Connected", severity="information", timeout=2)
         elif message.kind == "disconnected":
             hdr.connected = False
+            hdr.reconnecting = False
             self._connected = False
             self.notify(f"Disconnected: {message.detail}", severity="warning")
         elif message.kind == "reconnecting":
+            hdr.reconnecting = True
             self.notify(
                 f"Reconnecting… (attempt {message.detail})", severity="information", timeout=2
             )
@@ -307,6 +311,30 @@ class Nx01App(App):
             self._states[flavor].set_error(str(exc))
             self._panes[flavor].set_state(AgentState.ERROR)
             self.notify(f"Send failed: {exc}", severity="error")
+
+    # ── Slash autocomplete ───────────────────────────────────────────
+
+    def on_chat_input_text_changed(self, event: ChatInput.TextChanged) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
+            return
+        try:
+            dropdown = self.query_one(f"#slash-{flavor}", SlashDropdown)
+            dropdown.update_for_text(event.text)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_slash_dropdown_completed(self, event: SlashDropdown.Completed) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
+            return
+        try:
+            inp = self.query_one(f"#input-{flavor}", ChatInput)
+            # Replace whatever the user typed with the completed command + trailing space
+            inp.text = event.command + " "
+            inp.focus()
+        except Exception:  # noqa: BLE001
+            pass
 
     # ── Search ───────────────────────────────────────────────────────
 

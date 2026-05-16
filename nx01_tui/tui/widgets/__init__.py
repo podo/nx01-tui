@@ -16,6 +16,7 @@ from .sidebar import (
     SkillsSection,
 )
 from .skill_block import SkillBlock
+from .slash_dropdown import DEFAULT_SLASH_COMMANDS, SlashDropdown
 from .spinner import SpinnerWidget, StarSpinner
 from .status_bar import StatusBar
 from .thinking_block import ThinkingBlock
@@ -32,10 +33,12 @@ __all__ = [
     "FlavorPane",
     "MemorySection",
     "MonitorSidebar",
+    "DEFAULT_SLASH_COMMANDS",
     "SearchBar",
     "SessionSection",
     "SkillBlock",
     "SkillsSection",
+    "SlashDropdown",
     "SpinnerWidget",
     "StarSpinner",
     "StatusBar",

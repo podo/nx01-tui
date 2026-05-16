@@ -40,9 +40,19 @@ class ChatInput(TextArea):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(language=None, show_line_numbers=False, **kwargs)
 
+    class TextChanged(Message):
+        """Posted on every keystroke so a SlashDropdown sibling can react."""
+
+        def __init__(self, text: str) -> None:
+            super().__init__()
+            self.text = text
+
     def action_submit(self) -> None:
         text = self.text.strip()
         if not text:
             return
         self.post_message(self.Submitted(text))
         self.clear()
+
+    def _on_text_area_changed(self, _event: TextArea.Changed) -> None:
+        self.post_message(self.TextChanged(self.text))

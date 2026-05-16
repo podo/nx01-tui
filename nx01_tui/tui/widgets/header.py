@@ -26,6 +26,7 @@ class AppHeader(Horizontal):
     domain: reactive[str] = reactive("disconnected")
     model: reactive[str] = reactive("—")
     connected: reactive[bool] = reactive(False)
+    reconnecting: reactive[bool] = reactive(False)
 
     def compose(self) -> ComposeResult:
         yield Static(self._brand_text(), id="brand")
@@ -41,9 +42,20 @@ class AppHeader(Horizontal):
     def watch_connected(self, _value: bool) -> None:
         self._refresh_brand()
 
+    def watch_reconnecting(self, _value: bool) -> None:
+        self._refresh_brand()
+
     def _brand_text(self) -> str:
-        dot = "[$success]⬤[/]" if self.connected else "[$error]⬤[/]"
-        return f"[bold]NX01[/bold]  {dot}  [cyan]{self.domain}[/]  [dim]·[/]  [dim]{self.model}[/]"
+        if self.reconnecting:
+            dot = "[$warning]⠋[/]"
+            domain = f"[$warning]{self.domain} (reconnecting)[/]"
+        elif self.connected:
+            dot = "[$success]⬤[/]"
+            domain = f"[cyan]{self.domain}[/]"
+        else:
+            dot = "[$error]⬤[/]"
+            domain = f"[$error]{self.domain} (offline)[/]"
+        return f"[bold]NX01[/bold]  {dot}  {domain}  [dim]·[/]  [dim]{self.model}[/]"
 
     def _hints_text(self) -> str:
         return "[dim]ctrl+p cmd · ctrl+s sessions · ctrl+m memory · ? help[/]"
