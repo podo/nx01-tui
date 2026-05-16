@@ -1,14 +1,20 @@
 # nx01-tui
 
-TUI client for the NX01 fleet agent system.
+Operator cockpit for the [NX01](https://github.com/podo/nx01) fleet agent system — a full-screen Textual TUI and a lightweight chat/watch CLI.
 
 ## Install
 
 ```bash
-pip install nx01-tui
+# Recommended (uv — isolates the tool from your project venv)
+uv tool install git+https://github.com/podo/nx01-tui
+
+# Or with plain pip
+pip install git+https://github.com/podo/nx01-tui
 ```
 
-Or for development:
+Requires Python 3.11+.
+
+For development:
 
 ```bash
 git clone https://github.com/podo/nx01-tui.git
@@ -16,28 +22,26 @@ cd nx01-tui
 pip install -e ".[dev]"
 ```
 
-Requires Python 3.11+.
-
 ## Usage
 
 ```bash
-# Interactive chat
-nx01-tui chat --url https://your-server.example.com --api-key YOUR_API_KEY
+# Full-screen TUI (both flavors as live tabs)
+nx01-tui tui --url https://<your-domain> --api-key <NX01_API_KEY>
 
-# Interactive TUI (rich terminal UI)
-nx01-tui tui --url https://your-server.example.com --api-key YOUR_API_KEY
+# Single-flavor chat (readline REPL)
+nx01-tui chat --url https://<your-domain> --api-key <NX01_API_KEY> --flavor assistant
+nx01-tui chat --url https://<your-domain> --api-key <NX01_API_KEY> --flavor operator
+
+# Stream live agent events
+nx01-tui watch --url https://<your-domain> --api-key <NX01_API_KEY>
 ```
 
+`NX01_API_KEY` is the bearer token set in the server's `.env` (`NX01_API_KEY`).
+
 ## Update
+
+From any nx01 installation:
 
 ```bash
 nx01 tui update
 ```
-
-Or from any nx01 installation:
-
-```bash
-python -m nx01 tui update
-```
-
-Get your API key from the NX01 server's `/profile` endpoint.
