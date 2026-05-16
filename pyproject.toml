@@ -21,6 +21,7 @@ nx01-tui = "nx01_tui.cli:main"
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "ruff==0.15.13",
     "mypy>=1.10",
 ]
