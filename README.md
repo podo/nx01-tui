@@ -22,10 +22,10 @@ Requires Python 3.11+.
 
 ```bash
 # Interactive chat
-nx01-tui chat --url https://77.42.71.240.nip.io --api-key YOUR_API_KEY
+nx01-tui chat --url https://your-server.example.com --api-key YOUR_API_KEY
 
 # Interactive TUI (rich terminal UI)
-nx01-tui tui --url https://77.42.71.240.nip.io --api-key YOUR_API_KEY
+nx01-tui tui --url https://your-server.example.com --api-key YOUR_API_KEY
 ```
 
 Get your API key from the NX01 server's `/profile` endpoint.
