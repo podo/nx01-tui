@@ -57,13 +57,13 @@ class SessionsModal(BaseModal):
         with Vertical(classes="dialog"):
             yield Static("[bold]Sessions[/]", classes="dialog-title")
             yield Input(placeholder="Filter sessions…", id="filter")
-            yield OptionList(*self._render(""), id="session-list")
+            yield OptionList(*self._render_options(""), id="session-list")
             yield Static(
                 "[dim]r resume · f fork · e rename · d delete · n new · ESC close[/]",
                 classes="dialog-hint",
             )
 
-    def _render(self, query: str) -> list[Option]:
+    def _render_options(self, query: str) -> list[Option]:
         q = query.lower().strip()
         # Group by flavor
         by_flavor: dict[str, list[SessionEntry]] = {}
@@ -104,7 +104,7 @@ class SessionsModal(BaseModal):
         try:
             lst = self.query_one("#session-list", OptionList)
             lst.clear_options()
-            for opt in self._render(event.value):
+            for opt in self._render_options(event.value):
                 lst.add_option(opt)
         except Exception:  # noqa: BLE001
             pass
