@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 from datetime import datetime
+from urllib.parse import urlparse
 
 import httpx
 from textual.app import App, ComposeResult
@@ -42,8 +43,15 @@ def _dot(status: str) -> str:
     return _STATUS_DOT.get(status, "[dim]?[/]")
 
 
+def _host(url: str) -> str:
+    try:
+        return urlparse(url).hostname or url
+    except Exception:
+        return url
+
+
 class FleetHeader(Static):
-    """Titlebar: uptime + optional disconnect banner."""
+    """Titlebar: connection dot + uptime + server host + flavor count."""
 
     DEFAULT_CSS = """
     FleetHeader {
@@ -58,11 +66,13 @@ class FleetHeader(Static):
     }
     """
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, host: str = "", **kwargs: object) -> None:
         super().__init__(**kwargs)
+        self._host = host
         self._start: float = 0.0
         self._disconnected: bool = False
         self._reconnect_in: int = 0
+        self._flavor_count: int = 0
 
     def on_mount(self) -> None:
         self._start = time.time()
@@ -71,16 +81,24 @@ class FleetHeader(Static):
     def _tick(self) -> None:
         self.refresh()
 
+    def set_flavor_count(self, count: int) -> None:
+        self._flavor_count = count
+        self.refresh()
+
     def render(self) -> str:
         elapsed = int(time.time() - self._start)
         h, m = divmod(elapsed // 60, 60)
         uptime = f"{h}h {m:02d}m" if h else f"{m}m"
         if self._disconnected:
-            return (
-                f"NX01 Fleet   ⚠ disconnected — reconnecting in {self._reconnect_in}s…"
-                f"   uptime {uptime}"
-            )
-        return f"NX01 Fleet                                                uptime {uptime}"
+            left = f"[bold red]✗[/] disconnected — reconnecting in {self._reconnect_in}s…"
+        else:
+            n = self._flavor_count
+            flavor_str = f"  {n} flavor{'s' if n != 1 else ''}" if n else ""
+            left = f"[bold green]●[/] NX01 Fleet{flavor_str}"
+        right = f"{self._host}  uptime {uptime}"
+        # pad between left and right
+        pad = max(1, 60 - len(left) - len(right))
+        return f"{left}{' ' * pad}{right}"
 
     def set_disconnected(self, countdown: int) -> None:
         self._disconnected = True
@@ -121,12 +139,22 @@ class ToolSidebar(ScrollableContainer):
         color: $text-disabled;
         padding: 0 1;
     }
+    ToolSidebar .empty-hint {
+        color: $text-disabled;
+        text-style: italic;
+        padding: 1 1;
+    }
     """
 
     def compose(self) -> ComposeResult:
         yield Label("TOOL CALLS", classes="sidebar-title")
+        yield Label("no tool calls yet", classes="empty-hint", id="tools-empty-hint")
 
     def add_tool(self, tool: str, arg: str, status: str) -> None:
+        try:
+            self.query_one("#tools-empty-hint").remove()
+        except NoMatches:
+            pass
         ts = datetime.now().strftime("%H:%M")
         status_markup = {
             "started": "[yellow]⋯ running[/]",
@@ -149,7 +177,7 @@ class ToolSidebar(ScrollableContainer):
 
 
 class _ThinkingBlock(Vertical):
-    """Inline thinking stream that can be faded once the agent turn completes."""
+    """Inline thinking stream that fades once the agent turn completes."""
 
     DEFAULT_CSS = """
     _ThinkingBlock { height: auto; padding: 0 1; }
@@ -177,6 +205,11 @@ class ConversationPane(Vertical):
         scrollbar-size: 1 1;
         height: auto;
     }
+    ConversationPane .empty-hint {
+        color: $text-disabled;
+        text-style: italic;
+        padding: 1 2;
+    }
     ConversationPane .new-content-badge {
         dock: bottom;
         background: $primary-darken-2;
@@ -190,19 +223,35 @@ class ConversationPane(Vertical):
     }
     """
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, flavor: str = "", **kwargs: object) -> None:
         super().__init__(**kwargs)
+        self._flavor = flavor
         self._scroll_locked: bool = False
         self._active_thinking: _ThinkingBlock | None = None
+        self._has_content: bool = False
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="conv-scroll"):
             yield RichLog(highlight=False, markup=True, auto_scroll=False, id="conv-log")
         yield Label(
+            f"No messages yet — type below to chat with [bold]{self._flavor}[/]",
+            classes="empty-hint",
+            id="conv-empty-hint",
+            markup=True,
+        )
+        yield Label(
             "↓ new content  (End to resume)",
             classes="new-content-badge",
             id="new-badge",
         )
+
+    def _remove_empty_hint(self) -> None:
+        if not self._has_content:
+            self._has_content = True
+            try:
+                self.query_one("#conv-empty-hint").remove()
+            except NoMatches:
+                pass
 
     def _scroll(self) -> ScrollableContainer:
         return self.query_one("#conv-scroll", ScrollableContainer)
@@ -211,7 +260,6 @@ class ConversationPane(Vertical):
         return self.query_one("#conv-log", RichLog)
 
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
-        """Engage scroll lock when user scrolls upward."""
         sc = self._scroll()
         if sc.scroll_y < sc.max_scroll_y:
             self._scroll_locked = True
@@ -221,15 +269,18 @@ class ConversationPane(Vertical):
                 pass
 
     def append_user(self, text: str) -> None:
+        self._remove_empty_hint()
         ts = datetime.now().strftime("%H:%M")
         self._log().write(f"[dim]{ts}[/]  [bold yellow]you[/]  {text}\n")
         self._maybe_scroll()
 
     def append_chunk(self, text: str) -> None:
+        self._remove_empty_hint()
         self._log().write(text, expand=False)
         self._maybe_scroll()
 
     def start_agent_turn(self, flavor: str) -> None:
+        self._remove_empty_hint()
         ts = datetime.now().strftime("%H:%M")
         self._log().write(f"\n[dim]{ts}[/]  [bold green]{flavor}[/]  [dim yellow]● thinking…[/]\n")
         block = _ThinkingBlock()
@@ -324,8 +375,12 @@ class Nx01TuiApp(App):
     """NX01 fleet operator cockpit."""
 
     BINDINGS = [
+        Binding("ctrl+1", "switch_tab(0)", "Tab 1", show=True),
+        Binding("ctrl+2", "switch_tab(1)", "Tab 2", show=True),
+        Binding("ctrl+3", "switch_tab(2)", "Tab 3", show=True),
+        Binding("ctrl+4", "switch_tab(3)", "Tab 4", show=True),
         Binding("end", "resume_scroll", "Resume scroll", show=False),
-        Binding("escape", "handle_escape", "Esc", show=False),
+        Binding("escape", "handle_escape", "Esc / stop", show=True),
         Binding("q", "quit_if_empty", "Quit", show=True),
     ]
 
@@ -366,48 +421,67 @@ class Nx01TuiApp(App):
         super().__init__()
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        self._host = _host(base_url)
         self._states: dict[str, FlavorState] = {}
         self._esc_time: float = 0.0
         self._thinking_started: set[str] = set()
         self._pending_events: dict[str, list[dict]] = {}
+        self._first_tab_mounted: bool = False
 
     def compose(self) -> ComposeResult:
-        yield FleetHeader(id="fleet-header")
+        yield FleetHeader(host=self._host, id="fleet-header")
         yield TabbedContent(id="tabs")
         with Horizontal(id="input-row"):
-            yield Input(placeholder="send a message or /command…", id="msg-input")
+            yield Input(placeholder="send a message or /command… (@flavor to target)", id="msg-input")
             yield Label("— ▾", id="flavor-badge")
         yield CommandPalette(id="cmd-palette")
+        yield Footer()
 
     def on_mount(self) -> None:
+        self.run_worker(self._prefetch_flavors(), exclusive=False, name="prefetch")
         self.run_worker(self._sse_worker(), exclusive=True, name="sse")
         self.query_one("#msg-input", Input).focus()
+
+    async def _prefetch_flavors(self) -> None:
+        """Query /health on connect to pre-create tabs for all known flavors."""
+        url = f"{self._base_url}/health"
+        headers: dict[str, str] = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(url, headers=headers)
+                data = resp.json()
+                flavors: dict = data.get("flavors", {})
+                for name, info in flavors.items():
+                    if name not in self._states:
+                        status = info.get("status", "idle") if isinstance(info, dict) else "idle"
+                        self._states[name] = FlavorState(name=name, status=status)
+                        self._pending_events.setdefault(name, [])
+                        self.call_later(self._mount_flavor_tab, name)
+        except Exception:
+            pass
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         self.query_one("#msg-input", Input).focus()
         if event.pane and event.pane.id:
             flavor = str(event.pane.id).removeprefix("tab-")
-            self.query_one("#flavor-badge", Label).update(f"{flavor} ▾")
+            status = self._states.get(flavor, FlavorState(name=flavor)).status
+            self.query_one("#flavor-badge", Label).update(f"{_dot(status)} {flavor} ▾")
+
+    def action_switch_tab(self, index: int) -> None:
+        tabs = self.query_one("#tabs", TabbedContent)
+        try:
+            panes = list(tabs.query_one("ContentSwitcher").children)
+            if index < len(panes):
+                tabs.active = panes[index].id
+        except NoMatches:
+            pass
 
     def on_key(self, event: Key) -> None:
         palette = self.query_one("#cmd-palette", CommandPalette)
         if palette.is_open():
             return
-        tabs = self.query_one("#tabs", TabbedContent)
-        panes = list(tabs.query_one("ContentSwitcher").children)
-        if not panes:
-            return
-        key_num = None
-        if event.key == "ctrl+1":
-            key_num = 0
-        elif event.key == "ctrl+2":
-            key_num = 1
-        elif event.key == "ctrl+3":
-            key_num = 2
-        elif event.key == "ctrl+4":
-            key_num = 3
-        if key_num is not None and key_num < len(panes):
-            tabs.active = panes[key_num].id
 
     async def _sse_worker(self) -> None:
         url = f"{self._base_url}/events"
@@ -472,7 +546,6 @@ class Nx01TuiApp(App):
         self._dispatch_to_pane(flavor, payload)
 
     def _dispatch_to_pane(self, flavor: str, payload: dict) -> None:
-        """Dispatch a single event payload to the already-mounted flavor pane."""
         try:
             conv = self.query_one(f"#conv-{flavor}", ConversationPane)
             sidebar = self.query_one(f"#tools-{flavor}", ToolSidebar)
@@ -504,22 +577,38 @@ class Nx01TuiApp(App):
     def _mount_flavor_tab(self, flavor: str) -> None:
         async def _do() -> None:
             tabs = self.query_one("#tabs", TabbedContent)
-            pane = TabPane(flavor, id=f"tab-{flavor}")
+            status = self._states.get(flavor, FlavorState(name=flavor)).status
+            label = f"{_dot(status)} {flavor}"
+            pane = TabPane(label, id=f"tab-{flavor}")
             await tabs.add_pane(pane)
             row = Horizontal()
-            conv = ConversationPane(id=f"conv-{flavor}")
+            conv = ConversationPane(flavor=flavor, id=f"conv-{flavor}")
             sidebar = ToolSidebar(id=f"tools-{flavor}")
             await pane.mount(row)
             await row.mount(conv, sidebar)
-            badge = self.query_one("#flavor-badge", Label)
-            badge.update(f"{flavor} ▾")
+
+            # Auto-switch to first tab
+            if not self._first_tab_mounted:
+                self._first_tab_mounted = True
+                tabs.active = f"tab-{flavor}"
+
+            # Update header flavor count
+            header = self.query_one("#fleet-header", FleetHeader)
+            header.set_flavor_count(len(self._states))
+
+            # Flush any buffered events
             for buffered in self._pending_events.pop(flavor, []):
                 self._dispatch_to_pane(flavor, buffered)
 
         self.call_later(_do)
 
     def _update_tab_label(self, flavor: str, status: str) -> None:
-        pass
+        try:
+            tabs = self.query_one("#tabs", TabbedContent)
+            tab = tabs.get_tab(f"tab-{flavor}")
+            tab.label = f"{_dot(status)} {flavor}"
+        except (NoMatches, Exception):
+            pass
 
     def on_input_changed(self, event: Input.Changed) -> None:
         palette = self.query_one("#cmd-palette", CommandPalette)
@@ -547,23 +636,44 @@ class Nx01TuiApp(App):
         inp.clear()
         await self._send_message(text)
 
+    def _resolve_flavor(self, text: str) -> tuple[str, str]:
+        """Parse optional @flavor prefix. Returns (flavor, message)."""
+        if text.startswith("@"):
+            parts = text[1:].split(" ", 1)
+            if len(parts) == 2 and parts[0] in self._states:
+                return parts[0], parts[1].strip()
+        return "", text
+
     async def _send_message(self, text: str) -> None:
+        # Resolve @flavor prefix
+        at_flavor, message = self._resolve_flavor(text)
+
         tabs = self.query_one("#tabs", TabbedContent)
         active_id = tabs.active
-        if not active_id:
+
+        if at_flavor:
+            # Route to the @-mentioned flavor, switch to its tab
+            flavor = at_flavor
+            tabs.active = f"tab-{flavor}"
+        elif active_id:
+            flavor = str(active_id).removeprefix("tab-")
+        elif self._states:
+            # No active tab but flavors exist — use first
+            flavor = next(iter(self._states))
+            tabs.active = f"tab-{flavor}"
+        else:
             return
-        flavor = str(active_id).removeprefix("tab-")
 
         try:
             conv = self.query_one(f"#conv-{flavor}", ConversationPane)
-            conv.append_user(text)
+            conv.append_user(message)
         except NoMatches:
             pass
 
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
-        body = json.dumps({"target_flavor": flavor, "message": text}).encode()
+        body = json.dumps({"target_flavor": flavor, "message": message}).encode()
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 await client.post(f"{self._base_url}/message", content=body, headers=headers)
