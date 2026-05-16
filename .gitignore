@@ -8,3 +8,4 @@ build/
 .tox/
 .mypy_cache/
 .ruff_cache/
+snapshot_report.html

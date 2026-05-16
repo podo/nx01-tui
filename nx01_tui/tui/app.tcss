@@ -1,0 +1,77 @@
+/* nx01-tui — global stylesheet (see DESIGN.md §12) */
+
+Screen {
+    layers: base modals;
+    background: $background;
+}
+
+/* ── Top / bottom chrome ────────────────────────────────────────── */
+
+AppHeader  { dock: top;    height: 1; background: $surface; }
+StatusBar  { dock: bottom; height: 1; background: $surface; }
+Footer     { dock: bottom; }
+
+TabbedContent { height: 1fr; }
+
+/* ── FlavorPane state-class colors ──────────────────────────────── */
+/* (border colors animate automatically via transition rule on FlavorPane) */
+
+FlavorPane           { border: round $panel; }
+FlavorPane.thinking  { border: round $warning; }
+FlavorPane.streaming { border: round $primary; }
+FlavorPane.tool_call { border: round $success; }
+FlavorPane.done      { border: round $success 30%; }
+FlavorPane.error     { border: round $error; }
+
+/* ── Conversation area ──────────────────────────────────────────── */
+
+ConversationView {
+    padding: 1 2;
+    height: 1fr;
+    background: $background;
+}
+
+ChatInput {
+    height: auto;
+    min-height: 2;
+    max-height: 8;
+    border: round $panel;
+    padding: 0 1;
+}
+ChatInput:focus { border: round $primary; }
+
+SearchBar         { display: none; dock: top; height: 1; border: round $primary; }
+SearchBar.visible { display: block; }
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+
+MonitorSidebar {
+    width: 30;
+    height: 1fr;
+    border-left: solid $panel;
+    background: $surface;
+}
+MonitorSidebar.hidden     { display: none; }
+MonitorSidebar.icon-strip { width: 3; }
+
+/* ── Modals (overlay layer) ─────────────────────────────────────── */
+
+BaseModal,
+CommandModal,
+SessionsModal,
+MemoryModal,
+SkillsModal,
+ToolsModal,
+ConfigModal,
+CostModal,
+ModelPickerModal,
+HelpModal,
+PermissionModal,
+ConfirmModal {
+    align: center middle;
+}
+
+/* ── Misc reusable utility ──────────────────────────────────────── */
+
+.dim       { color: $text-muted; }
+.section-title { color: $text-muted; text-style: bold; }
