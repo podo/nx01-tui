@@ -12,7 +12,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
-from textual.events import MouseScrollUp
+from textual.events import Key, MouseScrollUp
 from textual.widget import Widget
 from textual.widgets import (
     Footer,
@@ -377,6 +377,32 @@ class Nx01TuiApp(App):
 
     def on_mount(self) -> None:
         self.run_worker(self._sse_worker(), exclusive=True, name="sse")
+        self.query_one("#msg-input", Input).focus()
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        self.query_one("#msg-input", Input).focus()
+        if event.pane and event.pane.id:
+            flavor = str(event.pane.id).removeprefix("tab-")
+            self.query_one("#flavor-badge", Label).update(f"{flavor} ▾")
+
+    def on_key(self, event: Key) -> None:
+        palette = self.query_one("#cmd-palette", CommandPalette)
+        if palette.is_open():
+            return
+        tabs = self.query_one("#tabs", TabbedContent)
+        panes = list(tabs.panes)
+        if not panes:
+            return
+        current = tabs.active
+        if current is None:
+            return
+        idx = next((i for i, p in enumerate(panes) if p.id == current), -1)
+        if event.key == "Tab" and not event.shift:
+            next_idx = (idx + 1) % len(panes)
+            tabs.active = panes[next_idx].id
+        elif event.key == "shift+tab":
+            prev_idx = (idx - 1) % len(panes)
+            tabs.active = panes[prev_idx].id
 
     async def _sse_worker(self) -> None:
         url = f"{self._base_url}/events"
