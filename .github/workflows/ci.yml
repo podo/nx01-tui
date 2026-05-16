@@ -25,4 +25,4 @@ jobs:
           ruff format --check .
 
       - name: Test
-        run: pytest --cov=nx01_tui --cov-report=term-missing
+        run: pytest -v --cov=nx01_tui --cov-report=term-missing
