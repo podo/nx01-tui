@@ -169,7 +169,8 @@ class EmptyState(Static):
     DEFAULT_CSS = """
     EmptyState {
         height: 1fr;
-        align: center middle;
+        content-align: center middle;
+        text-align: center;
         color: $text-muted;
         text-style: italic;
     }
