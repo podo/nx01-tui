@@ -13,10 +13,9 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
-from textual.events import Key, MouseScrollUp
+from textual.events import MouseScrollUp
 from textual.widget import Widget
 from textual.widgets import (
-    Footer,
     Input,
     Label,
     ListItem,
@@ -50,15 +49,25 @@ def _host(url: str) -> str:
         return url
 
 
-class FleetHeader(Static):
-    """Titlebar: connection dot + uptime + server host + flavor count."""
+# ─── Header ───────────────────────────────────────────────────────────────────
+
+class FleetHeader(Horizontal):
+    """Titlebar split into left (status) and right (host + uptime)."""
 
     DEFAULT_CSS = """
     FleetHeader {
         height: 1;
         background: $primary-darken-3;
         color: $text;
+    }
+    FleetHeader #hdr-left {
+        width: 1fr;
         padding: 0 1;
+    }
+    FleetHeader #hdr-right {
+        width: auto;
+        padding: 0 1;
+        color: $text-muted;
     }
     FleetHeader.disconnected {
         background: $warning-darken-2;
@@ -69,48 +78,137 @@ class FleetHeader(Static):
     def __init__(self, host: str = "", **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._host = host
-        self._start: float = 0.0
-        self._disconnected: bool = False
-        self._reconnect_in: int = 0
-        self._flavor_count: int = 0
+        self._start = time.time()
+        self._disconnected = False
+        self._reconnect_in = 0
+        self._flavor_count = 0
+        self._flavor_statuses: dict[str, str] = {}
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="hdr-left")
+        yield Static("", id="hdr-right")
 
     def on_mount(self) -> None:
-        self._start = time.time()
         self.set_interval(1, self._tick)
+        self._render_both()
 
     def _tick(self) -> None:
-        self.refresh()
+        self._render_both()
 
-    def set_flavor_count(self, count: int) -> None:
-        self._flavor_count = count
-        self.refresh()
-
-    def render(self) -> str:
+    def _render_both(self) -> None:
         elapsed = int(time.time() - self._start)
         h, m = divmod(elapsed // 60, 60)
         uptime = f"{h}h {m:02d}m" if h else f"{m}m"
+
         if self._disconnected:
             left = f"[bold red]✗[/] disconnected — reconnecting in {self._reconnect_in}s…"
         else:
-            n = self._flavor_count
-            flavor_str = f"  {n} flavor{'s' if n != 1 else ''}" if n else ""
-            left = f"[bold green]●[/] NX01 Fleet{flavor_str}"
+            dots = "  ".join(
+                f"{_dot(s)} {n}" for n, s in self._flavor_statuses.items()
+            ) if self._flavor_statuses else ""
+            count = f"  [{dots}]" if dots else ""
+            left = f"[bold green]●[/] NX01 Fleet{count}"
+
         right = f"{self._host}  uptime {uptime}"
-        # pad between left and right
-        pad = max(1, 60 - len(left) - len(right))
-        return f"{left}{' ' * pad}{right}"
+
+        try:
+            self.query_one("#hdr-left", Static).update(left)
+            self.query_one("#hdr-right", Static).update(right)
+        except NoMatches:
+            pass
+
+    def update_flavor(self, name: str, status: str) -> None:
+        self._flavor_statuses[name] = status
+        self._flavor_count = len(self._flavor_statuses)
+        self._render_both()
 
     def set_disconnected(self, countdown: int) -> None:
         self._disconnected = True
         self._reconnect_in = countdown
         self.add_class("disconnected")
-        self.refresh()
+        self._render_both()
 
     def set_connected(self) -> None:
         self._disconnected = False
         self.remove_class("disconnected")
-        self.refresh()
+        self._render_both()
 
+
+# ─── Key hints bar (replaces Footer) ──────────────────────────────────────────
+
+class KeyHints(Static):
+    """One-line keybinding strip docked at the very bottom."""
+
+    DEFAULT_CSS = """
+    KeyHints {
+        dock: bottom;
+        height: 1;
+        background: $panel;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    """
+
+    HINTS = (
+        "[dim]ctrl+1-4[/] tabs  "
+        "[dim]esc[/] clear  "
+        "[dim]esc×2[/] stop  "
+        "[dim]q[/] quit  "
+        "[dim]@flavor[/] route"
+    )
+
+    def render(self) -> str:
+        return self.HINTS
+
+
+# ─── Global empty state ────────────────────────────────────────────────────────
+
+class EmptyState(Static):
+    """Shown when no flavor tabs exist yet."""
+
+    DEFAULT_CSS = """
+    EmptyState {
+        height: 1fr;
+        align: center middle;
+        color: $text-muted;
+        text-style: italic;
+    }
+    EmptyState.hidden {
+        display: none;
+    }
+    """
+
+    def __init__(self, host: str = "", **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._host = host
+        self._flavors: list[str] = []
+        self._connecting = True
+
+    def set_connecting(self, host: str) -> None:
+        self._connecting = True
+        self._refresh_text()
+
+    def set_flavors(self, flavors: list[str]) -> None:
+        self._connecting = False
+        self._flavors = flavors
+        self._refresh_text()
+
+    def _refresh_text(self) -> None:
+        if self._connecting:
+            text = f"Connecting to {self._host}…"
+        elif not self._flavors:
+            text = f"Connected · no flavors found on {self._host}"
+        else:
+            flavor_list = "  ".join(f"[bold]{f}[/]" for f in self._flavors)
+            text = (
+                f"Connected to {self._host}\n\n"
+                f"Available flavors:  {flavor_list}\n\n"
+                "[dim]Send a message — or type [/][bold]@assistant hello[/][dim] to target a flavor[/]"
+            )
+        self.update(text)
+
+
+# ─── Tool sidebar ──────────────────────────────────────────────────────────────
 
 class ToolSidebar(ScrollableContainer):
     """Scrollable tool call log for one flavor tab."""
@@ -148,24 +246,24 @@ class ToolSidebar(ScrollableContainer):
 
     def compose(self) -> ComposeResult:
         yield Label("TOOL CALLS", classes="sidebar-title")
-        yield Label("no tool calls yet", classes="empty-hint", id="tools-empty-hint")
+        yield Label("no tool calls yet", classes="empty-hint", id="tools-empty")
 
     def add_tool(self, tool: str, arg: str, status: str) -> None:
         try:
-            self.query_one("#tools-empty-hint").remove()
+            self.query_one("#tools-empty").remove()
         except NoMatches:
             pass
         ts = datetime.now().strftime("%H:%M")
         status_markup = {
-            "started": "[yellow]⋯ running[/]",
-            "in_progress": "[yellow]⋯ running[/]",
-            "completed": "[green]✓ done[/]",
-            "done": "[green]✓ done[/]",
-            "error": "[red]✗ error[/]",
-            "failed": "[red]✗ error[/]",
+            "started": "[yellow]⋯[/]",
+            "in_progress": "[yellow]⋯[/]",
+            "completed": "[green]✓[/]",
+            "done": "[green]✓[/]",
+            "error": "[red]✗[/]",
+            "failed": "[red]✗[/]",
         }.get(status, f"[dim]{status}[/]")
         arg_short = (arg[:22] + "…") if len(arg) > 24 else arg
-        markup = f"[dim]{ts}[/] [bold orange1]⚙ {tool}[/]\n[dim]{arg_short}[/]\n{status_markup}"
+        markup = f"[dim]{ts}[/] [bold orange1]⚙ {tool}[/]\n[dim]{arg_short}[/] {status_markup}"
         self.mount(Label(markup, classes="tool-entry", markup=True))
         self.scroll_end(animate=False)
 
@@ -176,9 +274,9 @@ class ToolSidebar(ScrollableContainer):
         self.scroll_end(animate=False)
 
 
-class _ThinkingBlock(Vertical):
-    """Inline thinking stream that fades once the agent turn completes."""
+# ─── Thinking block ────────────────────────────────────────────────────────────
 
+class _ThinkingBlock(Vertical):
     DEFAULT_CSS = """
     _ThinkingBlock { height: auto; padding: 0 1; }
     _ThinkingBlock Label { color: #4a5a6a; text-style: italic; }
@@ -188,6 +286,8 @@ class _ThinkingBlock(Vertical):
     def add_line(self, text: str) -> None:
         self.mount(Label(f"~ {text}"))
 
+
+# ─── Conversation pane ─────────────────────────────────────────────────────────
 
 class ConversationPane(Vertical):
     """Scrollable conversation with inline thinking stream."""
@@ -205,12 +305,12 @@ class ConversationPane(Vertical):
         scrollbar-size: 1 1;
         height: auto;
     }
-    ConversationPane .empty-hint {
+    ConversationPane .conv-empty {
         color: $text-disabled;
         text-style: italic;
         padding: 1 2;
     }
-    ConversationPane .new-content-badge {
+    ConversationPane .new-badge {
         dock: bottom;
         background: $primary-darken-2;
         color: $text;
@@ -218,7 +318,7 @@ class ConversationPane(Vertical):
         padding: 0 1;
         display: none;
     }
-    ConversationPane .new-content-badge.visible {
+    ConversationPane .new-badge.visible {
         display: block;
     }
     """
@@ -226,41 +326,37 @@ class ConversationPane(Vertical):
     def __init__(self, flavor: str = "", **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._flavor = flavor
-        self._scroll_locked: bool = False
+        self._scroll_locked = False
         self._active_thinking: _ThinkingBlock | None = None
-        self._has_content: bool = False
+        self._has_content = False
 
     def compose(self) -> ComposeResult:
         with ScrollableContainer(id="conv-scroll"):
             yield RichLog(highlight=False, markup=True, auto_scroll=False, id="conv-log")
         yield Label(
-            f"No messages yet — type below to chat with [bold]{self._flavor}[/]",
-            classes="empty-hint",
-            id="conv-empty-hint",
+            f"No messages yet — type below to chat with [bold]{self._flavor or 'a flavor'}[/]",
+            classes="conv-empty",
+            id="conv-empty",
             markup=True,
         )
-        yield Label(
-            "↓ new content  (End to resume)",
-            classes="new-content-badge",
-            id="new-badge",
-        )
+        yield Label("↓ new content  (End to resume)", classes="new-badge", id="new-badge")
 
-    def _remove_empty_hint(self) -> None:
+    def _clear_empty(self) -> None:
         if not self._has_content:
             self._has_content = True
             try:
-                self.query_one("#conv-empty-hint").remove()
+                self.query_one("#conv-empty").remove()
             except NoMatches:
                 pass
 
-    def _scroll(self) -> ScrollableContainer:
+    def _sc(self) -> ScrollableContainer:
         return self.query_one("#conv-scroll", ScrollableContainer)
 
     def _log(self) -> RichLog:
         return self.query_one("#conv-log", RichLog)
 
-    def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
-        sc = self._scroll()
+    def on_mouse_scroll_up(self, _: MouseScrollUp) -> None:
+        sc = self._sc()
         if sc.scroll_y < sc.max_scroll_y:
             self._scroll_locked = True
             try:
@@ -269,28 +365,28 @@ class ConversationPane(Vertical):
                 pass
 
     def append_user(self, text: str) -> None:
-        self._remove_empty_hint()
+        self._clear_empty()
         ts = datetime.now().strftime("%H:%M")
         self._log().write(f"[dim]{ts}[/]  [bold yellow]you[/]  {text}\n")
-        self._maybe_scroll()
+        self._scroll()
 
     def append_chunk(self, text: str) -> None:
-        self._remove_empty_hint()
+        self._clear_empty()
         self._log().write(text, expand=False)
-        self._maybe_scroll()
+        self._scroll()
 
     def start_agent_turn(self, flavor: str) -> None:
-        self._remove_empty_hint()
+        self._clear_empty()
         ts = datetime.now().strftime("%H:%M")
         self._log().write(f"\n[dim]{ts}[/]  [bold green]{flavor}[/]  [dim yellow]● thinking…[/]\n")
         block = _ThinkingBlock()
         self._active_thinking = block
-        self._scroll().mount(block)
+        self._sc().mount(block)
 
     def append_thinking(self, text: str) -> None:
         if self._active_thinking is not None:
             self._active_thinking.add_line(text)
-        self._maybe_scroll()
+        self._scroll()
 
     def seal_turn(self) -> None:
         if self._active_thinking is not None:
@@ -304,20 +400,22 @@ class ConversationPane(Vertical):
             self.query_one("#new-badge").remove_class("visible")
         except NoMatches:
             pass
-        self._scroll().scroll_end(animate=False)
+        self._sc().scroll_end(animate=False)
 
-    def _maybe_scroll(self) -> None:
+    def _scroll(self) -> None:
         if self._scroll_locked:
             try:
                 self.query_one("#new-badge").add_class("visible")
             except NoMatches:
                 pass
         else:
-            self._scroll().scroll_end(animate=False)
+            self._sc().scroll_end(animate=False)
 
+
+# ─── Command palette ───────────────────────────────────────────────────────────
 
 class CommandPalette(Widget):
-    """Slash command autocomplete overlay shown above the input bar."""
+    """Slash command autocomplete overlay above the input bar."""
 
     DEFAULT_CSS = """
     CommandPalette {
@@ -327,13 +425,11 @@ class CommandPalette(Widget):
         background: $surface;
         border: solid $primary-darken-2;
         display: none;
-        margin-bottom: 3;
+        margin-bottom: 4;
         margin-left: 1;
         margin-right: 1;
     }
-    CommandPalette.visible {
-        display: block;
-    }
+    CommandPalette.visible { display: block; }
     CommandPalette ListView {
         height: auto;
         max-height: 12;
@@ -371,29 +467,33 @@ class CommandPalette(Widget):
         return None
 
 
+# ─── Main app ──────────────────────────────────────────────────────────────────
+
 class Nx01TuiApp(App):
     """NX01 fleet operator cockpit."""
 
     BINDINGS = [
-        Binding("ctrl+1", "switch_tab(0)", "Tab 1", show=True),
-        Binding("ctrl+2", "switch_tab(1)", "Tab 2", show=True),
-        Binding("ctrl+3", "switch_tab(2)", "Tab 3", show=True),
-        Binding("ctrl+4", "switch_tab(3)", "Tab 4", show=True),
+        Binding("ctrl+1", "switch_tab(0)", "Tab 1", show=False),
+        Binding("ctrl+2", "switch_tab(1)", "Tab 2", show=False),
+        Binding("ctrl+3", "switch_tab(2)", "Tab 3", show=False),
+        Binding("ctrl+4", "switch_tab(3)", "Tab 4", show=False),
         Binding("end", "resume_scroll", "Resume scroll", show=False),
-        Binding("escape", "handle_escape", "Esc / stop", show=True),
-        Binding("q", "quit_if_empty", "Quit", show=True),
+        Binding("escape", "handle_escape", "Esc", show=False),
+        Binding("q", "quit_if_empty", "Quit", show=False),
     ]
 
     DEFAULT_CSS = """
-    Screen {
-        layout: vertical;
-    }
+    Screen { layout: vertical; }
+
     TabbedContent {
         height: 1fr;
+        display: none;
     }
-    TabPane {
-        padding: 0;
+    TabbedContent.visible {
+        display: block;
     }
+    TabPane { padding: 0; }
+
     #input-row {
         dock: bottom;
         height: 3;
@@ -403,9 +503,7 @@ class Nx01TuiApp(App):
         padding: 0 1;
         layer: 2;
     }
-    #msg-input {
-        width: 1fr;
-    }
+    #msg-input { width: 1fr; }
     #flavor-badge {
         width: auto;
         padding: 0 1;
@@ -413,7 +511,7 @@ class Nx01TuiApp(App):
     }
     #cmd-palette {
         dock: bottom;
-        layer: 1;
+        layer: 3;
     }
     """
 
@@ -426,24 +524,29 @@ class Nx01TuiApp(App):
         self._esc_time: float = 0.0
         self._thinking_started: set[str] = set()
         self._pending_events: dict[str, list[dict]] = {}
-        self._first_tab_mounted: bool = False
+        self._first_tab_mounted = False
 
     def compose(self) -> ComposeResult:
         yield FleetHeader(host=self._host, id="fleet-header")
+        yield EmptyState(host=self._host, id="empty-state")
         yield TabbedContent(id="tabs")
         with Horizontal(id="input-row"):
-            yield Input(placeholder="send a message or /command… (@flavor to target)", id="msg-input")
-            yield Label("— ▾", id="flavor-badge")
+            yield Input(placeholder="message / @flavor / /command…", id="msg-input")
+            yield Label("select flavor ▾", id="flavor-badge")
         yield CommandPalette(id="cmd-palette")
-        yield Footer()
+        yield KeyHints()
 
     def on_mount(self) -> None:
         self.run_worker(self._prefetch_flavors(), exclusive=False, name="prefetch")
         self.run_worker(self._sse_worker(), exclusive=True, name="sse")
         self.query_one("#msg-input", Input).focus()
 
+    # ── Pre-fetch ──────────────────────────────────────────────────────────────
+
     async def _prefetch_flavors(self) -> None:
-        """Query /health on connect to pre-create tabs for all known flavors."""
+        es = self.query_one("#empty-state", EmptyState)
+        es.set_connecting(self._host)
+
         url = f"{self._base_url}/health"
         headers: dict[str, str] = {}
         if self._api_key:
@@ -453,6 +556,7 @@ class Nx01TuiApp(App):
                 resp = await client.get(url, headers=headers)
                 data = resp.json()
                 flavors: dict = data.get("flavors", {})
+                self.call_later(es.set_flavors, list(flavors.keys()))
                 for name, info in flavors.items():
                     if name not in self._states:
                         status = info.get("status", "idle") if isinstance(info, dict) else "idle"
@@ -460,28 +564,9 @@ class Nx01TuiApp(App):
                         self._pending_events.setdefault(name, [])
                         self.call_later(self._mount_flavor_tab, name)
         except Exception:
-            pass
+            self.call_later(es.set_flavors, [])
 
-    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        self.query_one("#msg-input", Input).focus()
-        if event.pane and event.pane.id:
-            flavor = str(event.pane.id).removeprefix("tab-")
-            status = self._states.get(flavor, FlavorState(name=flavor)).status
-            self.query_one("#flavor-badge", Label).update(f"{_dot(status)} {flavor} ▾")
-
-    def action_switch_tab(self, index: int) -> None:
-        tabs = self.query_one("#tabs", TabbedContent)
-        try:
-            panes = list(tabs.query_one("ContentSwitcher").children)
-            if index < len(panes):
-                tabs.active = panes[index].id
-        except NoMatches:
-            pass
-
-    def on_key(self, event: Key) -> None:
-        palette = self.query_one("#cmd-palette", CommandPalette)
-        if palette.is_open():
-            return
+    # ── SSE worker ─────────────────────────────────────────────────────────────
 
     async def _sse_worker(self) -> None:
         url = f"{self._base_url}/events"
@@ -524,6 +609,8 @@ class Nx01TuiApp(App):
                 )
                 await asyncio.sleep(1)
             backoff = min(backoff * 2, 30)
+
+    # ── Event dispatch ─────────────────────────────────────────────────────────
 
     def _handle_event(self, payload: dict) -> None:
         flavor = payload.get("flavor", "")
@@ -573,6 +660,9 @@ class Nx01TuiApp(App):
         elif kind == "FlavorStatusEvent":
             state = self._states[flavor]
             self._update_tab_label(flavor, state.status)
+            self.query_one("#fleet-header", FleetHeader).update_flavor(flavor, state.status)
+
+    # ── Tab management ─────────────────────────────────────────────────────────
 
     def _mount_flavor_tab(self, flavor: str) -> None:
         async def _do() -> None:
@@ -581,34 +671,58 @@ class Nx01TuiApp(App):
             label = f"{_dot(status)} {flavor}"
             pane = TabPane(label, id=f"tab-{flavor}")
             await tabs.add_pane(pane)
+
             row = Horizontal()
             conv = ConversationPane(flavor=flavor, id=f"conv-{flavor}")
             sidebar = ToolSidebar(id=f"tools-{flavor}")
             await pane.mount(row)
             await row.mount(conv, sidebar)
 
-            # Auto-switch to first tab
+            # Show tabs, hide empty state on first tab
             if not self._first_tab_mounted:
                 self._first_tab_mounted = True
+                tabs.add_class("visible")
+                try:
+                    self.query_one("#empty-state").add_class("hidden")
+                except NoMatches:
+                    pass
                 tabs.active = f"tab-{flavor}"
 
-            # Update header flavor count
-            header = self.query_one("#fleet-header", FleetHeader)
-            header.set_flavor_count(len(self._states))
+            # Update header
+            self.query_one("#fleet-header", FleetHeader).update_flavor(flavor, status)
 
-            # Flush any buffered events
-            for buffered in self._pending_events.pop(flavor, []):
-                self._dispatch_to_pane(flavor, buffered)
+            # Flush buffered events
+            for ev in self._pending_events.pop(flavor, []):
+                self._dispatch_to_pane(flavor, ev)
 
         self.call_later(_do)
 
     def _update_tab_label(self, flavor: str, status: str) -> None:
         try:
-            tabs = self.query_one("#tabs", TabbedContent)
-            tab = tabs.get_tab(f"tab-{flavor}")
+            tab = self.query_one("#tabs", TabbedContent).get_tab(f"tab-{flavor}")
             tab.label = f"{_dot(status)} {flavor}"
         except (NoMatches, Exception):
             pass
+
+    # ── Tab switching ──────────────────────────────────────────────────────────
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        self.query_one("#msg-input", Input).focus()
+        if event.pane and event.pane.id:
+            flavor = str(event.pane.id).removeprefix("tab-")
+            status = self._states.get(flavor, FlavorState(name=flavor)).status
+            self.query_one("#flavor-badge", Label).update(f"{_dot(status)} {flavor} ▾")
+
+    def action_switch_tab(self, index: int) -> None:
+        try:
+            tabs = self.query_one("#tabs", TabbedContent)
+            panes = list(tabs.query_one("ContentSwitcher").children)
+            if index < len(panes):
+                tabs.active = panes[index].id
+        except NoMatches:
+            pass
+
+    # ── Input ──────────────────────────────────────────────────────────────────
 
     def on_input_changed(self, event: Input.Changed) -> None:
         palette = self.query_one("#cmd-palette", CommandPalette)
@@ -632,12 +746,11 @@ class Nx01TuiApp(App):
 
         if not text:
             return
-
         inp.clear()
         await self._send_message(text)
 
     def _resolve_flavor(self, text: str) -> tuple[str, str]:
-        """Parse optional @flavor prefix. Returns (flavor, message)."""
+        """Parse optional @flavor prefix → (flavor, message)."""
         if text.startswith("@"):
             parts = text[1:].split(" ", 1)
             if len(parts) == 2 and parts[0] in self._states:
@@ -645,28 +758,24 @@ class Nx01TuiApp(App):
         return "", text
 
     async def _send_message(self, text: str) -> None:
-        # Resolve @flavor prefix
         at_flavor, message = self._resolve_flavor(text)
 
         tabs = self.query_one("#tabs", TabbedContent)
         active_id = tabs.active
 
         if at_flavor:
-            # Route to the @-mentioned flavor, switch to its tab
             flavor = at_flavor
             tabs.active = f"tab-{flavor}"
         elif active_id:
             flavor = str(active_id).removeprefix("tab-")
         elif self._states:
-            # No active tab but flavors exist — use first
             flavor = next(iter(self._states))
             tabs.active = f"tab-{flavor}"
         else:
             return
 
         try:
-            conv = self.query_one(f"#conv-{flavor}", ConversationPane)
-            conv.append_user(message)
+            self.query_one(f"#conv-{flavor}", ConversationPane).append_user(message)
         except NoMatches:
             pass
 
@@ -679,6 +788,8 @@ class Nx01TuiApp(App):
                 await client.post(f"{self._base_url}/message", content=body, headers=headers)
         except Exception:
             pass
+
+    # ── Actions ────────────────────────────────────────────────────────────────
 
     def action_resume_scroll(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
@@ -704,6 +815,5 @@ class Nx01TuiApp(App):
             self.query_one("#msg-input", Input).clear()
 
     def action_quit_if_empty(self) -> None:
-        inp = self.query_one("#msg-input", Input)
-        if not inp.value:
+        if not self.query_one("#msg-input", Input).value:
             self.exit()
