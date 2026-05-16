@@ -386,23 +386,27 @@ class Nx01TuiApp(App):
             self.query_one("#flavor-badge", Label).update(f"{flavor} ▾")
 
     def on_key(self, event: Key) -> None:
+        if event.key not in ("Tab", "shift+tab"):
+            return
         palette = self.query_one("#cmd-palette", CommandPalette)
         if palette.is_open():
             return
         tabs = self.query_one("#tabs", TabbedContent)
-        panes = list(tabs.panes)
-        if not panes:
+        tab_ids = list(tabs.query("ContentPane"))
+        if not tab_ids:
             return
         current = tabs.active
         if current is None:
             return
-        idx = next((i for i, p in enumerate(panes) if p.id == current), -1)
-        if event.key == "Tab" and not event.shift:
-            next_idx = (idx + 1) % len(panes)
-            tabs.active = panes[next_idx].id
-        elif event.key == "shift+tab":
-            prev_idx = (idx - 1) % len(panes)
-            tabs.active = panes[prev_idx].id
+        idx = next((i for i, p in enumerate(tab_ids) if p.id == current), -1)
+        if idx < 0:
+            return
+        if event.key == "Tab":
+            next_idx = (idx + 1) % len(tab_ids)
+            tabs.active = tab_ids[next_idx].id
+        else:
+            prev_idx = (idx - 1) % len(tab_ids)
+            tabs.active = tab_ids[prev_idx].id
 
     async def _sse_worker(self) -> None:
         url = f"{self._base_url}/events"
