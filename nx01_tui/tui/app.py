@@ -390,8 +390,6 @@ class Nx01TuiApp(App):
             self.query_one("#flavor-badge", Label).update(f"{flavor} ▾")
 
     def on_key(self, event: Key) -> None:
-        if event.key not in ("ctrl+left", "ctrl+right"):
-            return
         palette = self.query_one("#cmd-palette", CommandPalette)
         if palette.is_open():
             return
@@ -399,18 +397,17 @@ class Nx01TuiApp(App):
         panes = list(tabs.query_one("ContentSwitcher").children)
         if not panes:
             return
-        current = tabs.active
-        if current is None:
-            return
-        idx = next((i for i, p in enumerate(panes) if p.id == current), -1)
-        if idx < 0:
-            return
-        if event.key == "ctrl+right":
-            next_idx = (idx + 1) % len(panes)
-            tabs.active = panes[next_idx].id
-        else:
-            prev_idx = (idx - 1) % len(panes)
-            tabs.active = panes[prev_idx].id
+        key_num = None
+        if event.key == "ctrl+1":
+            key_num = 0
+        elif event.key == "ctrl+2":
+            key_num = 1
+        elif event.key == "ctrl+3":
+            key_num = 2
+        elif event.key == "ctrl+4":
+            key_num = 3
+        if key_num is not None and key_num < len(panes):
+            tabs.active = panes[key_num].id
 
     async def _sse_worker(self) -> None:
         url = f"{self._base_url}/events"
