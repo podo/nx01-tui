@@ -28,4 +28,16 @@ nx01-tui chat --url https://your-server.example.com --api-key YOUR_API_KEY
 nx01-tui tui --url https://your-server.example.com --api-key YOUR_API_KEY
 ```
 
+## Update
+
+```bash
+nx01 tui update
+```
+
+Or from any nx01 installation:
+
+```bash
+python -m nx01 tui update
+```
+
 Get your API key from the NX01 server's `/profile` endpoint.
