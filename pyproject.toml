@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nx01-tui"
+description = "NX01 client — TUI, chat, and watch for the NX01 fleet"
+requires-python = ">=3.11"
+license = "MIT"
+dynamic = ["version"]
+dependencies = [
+    "textual>=0.68",
+    "httpx>=0.27",
+    "rich>=13.0",
+]
+
+[project.scripts]
+nx01-tui = "nx01_tui.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff==0.15.13",
+    "mypy>=1.10",
+]
+
+[tool.hatch.version]
+path = "nx01_tui/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nx01_tui"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nx01_tui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--strict-markers"
