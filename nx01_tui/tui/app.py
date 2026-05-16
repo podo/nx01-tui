@@ -340,6 +340,7 @@ class Nx01TuiApp(App):
         padding: 0;
     }
     #input-row {
+        dock: bottom;
         height: 3;
         border-top: solid $primary-darken-3;
         background: $surface-darken-1;
