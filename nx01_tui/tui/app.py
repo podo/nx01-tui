@@ -1,838 +1,571 @@
-"""Nx01TuiApp — Textual operator cockpit for the NX01 fleet (#76)."""
+"""Nx01App — the main Textual application.
+
+Composes:
+  - AppHeader (top)
+  - TabbedContent of FlavorPane per discovered flavor
+  - StatusBar (bottom)
+  - Footer (bottom)
+
+Owns:
+  - FlavorState per flavor
+  - SSE worker (httpx streaming with reconnect)
+  - Modal routing
+  - Keybinding handlers
+"""
 
 from __future__ import annotations
 
 import asyncio
-import json
-import time
-from datetime import datetime
+import logging
 from urllib.parse import urlparse
 
 import httpx
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual.css.query import NoMatches
-from textual.events import MouseScrollUp
-from textual.widget import Widget
-from textual.widgets import (
-    Input,
-    Label,
-    ListItem,
-    ListView,
-    RichLog,
-    Static,
-    TabbedContent,
-    TabPane,
+from textual.message import Message
+from textual.widgets import Footer, TabbedContent, TabPane
+
+from .client import ConnectionConfig, Nx01Client, stream_with_backoff
+from .events import (
+    AgentChunkEvent,
+    AgentThinkingEvent,
+    AgentTurnDoneEvent,
+    FlavorStatusEvent,
+    PermissionRequiredEvent,
+    SkillLoadedEvent,
+    SseEvent,
+    ToolCallEvent,
+)
+from .modals import (
+    CommandModal,
+    ConfigModal,
+    ConfirmModal,
+    CostModal,
+    HelpModal,
+    MemoryModal,
+    ModelPickerModal,
+    PermissionModal,
+    SessionAction,
+    SessionEntry,
+    SessionsModal,
+    SkillsModal,
+    ToolsModal,
+    default_commands,
+)
+from .state import AgentState, FlavorState, route_event
+from .widgets import (
+    AppHeader,
+    ChatInput,
+    FlavorPane,
+    SearchBar,
+    StatusBar,
 )
 
-from nx01_tui.tui.commands import filter_commands
-from nx01_tui.tui.state import FlavorState, route_event
+logger = logging.getLogger(__name__)
 
-_STATUS_DOT = {
-    "running": "[bold green]●[/]",
-    "idle": "[dim yellow]◌[/]",
-    "offline": "[dim]·[/]",
-    "crashed": "[bold red]✗[/]",
-    "stopped": "[dim]·[/]",
-}
 
+class SseMessage(Message):
+    """Wraps an SseEvent for main-thread dispatch via post_message."""
 
-def _dot(status: str) -> str:
-    return _STATUS_DOT.get(status, "[dim]?[/]")
+    def __init__(self, event: SseEvent) -> None:
+        super().__init__()
+        self.event = event
 
 
-def _host(url: str) -> str:
-    try:
-        return urlparse(url).hostname or url
-    except Exception:
-        return url
+class ConnectionStatusMessage(Message):
+    def __init__(self, kind: str, detail: str | object = "") -> None:
+        super().__init__()
+        self.kind = kind  # connected | disconnected | reconnecting
+        self.detail = detail
 
 
-# ─── Header ───────────────────────────────────────────────────────────────────
+class Nx01App(App):
+    """Tabbed multi-flavor cockpit for nx01."""
 
-
-class FleetHeader(Horizontal):
-    """Titlebar split into left (status) and right (host + uptime)."""
-
-    DEFAULT_CSS = """
-    FleetHeader {
-        height: 1;
-        background: $primary-darken-3;
-        color: $text;
-    }
-    FleetHeader #hdr-left {
-        width: 1fr;
-        padding: 0 1;
-    }
-    FleetHeader #hdr-right {
-        width: auto;
-        padding: 0 1;
-        color: $text-muted;
-    }
-    FleetHeader.disconnected {
-        background: $warning-darken-2;
-        color: $warning;
-    }
-    """
-
-    def __init__(self, host: str = "", **kwargs: object) -> None:
-        super().__init__(**kwargs)
-        self._host = host
-        self._start = time.time()
-        self._disconnected = False
-        self._reconnect_in = 0
-        self._flavor_count = 0
-        self._flavor_statuses: dict[str, str] = {}
-
-    def compose(self) -> ComposeResult:
-        yield Static("", id="hdr-left")
-        yield Static("", id="hdr-right")
-
-    def on_mount(self) -> None:
-        self.set_interval(1, self._tick)
-        self._render_both()
-
-    def _tick(self) -> None:
-        self._render_both()
-
-    def _render_both(self) -> None:
-        elapsed = int(time.time() - self._start)
-        h, m = divmod(elapsed // 60, 60)
-        uptime = f"{h}h {m:02d}m" if h else f"{m}m"
-
-        if self._disconnected:
-            left = f"[bold red]✗[/] disconnected — reconnecting in {self._reconnect_in}s…"
-        else:
-            dots = (
-                "  ".join(f"{_dot(s)} {n}" for n, s in self._flavor_statuses.items())
-                if self._flavor_statuses
-                else ""
-            )
-            count = f"  {dots}" if dots else ""
-            left = f"[bold green]●[/] NX01 Fleet{count}"
-
-        right = f"{self._host}  uptime {uptime}"
-
-        try:
-            self.query_one("#hdr-left", Static).update(left)
-            self.query_one("#hdr-right", Static).update(right)
-        except NoMatches:
-            pass
-
-    def update_flavor(self, name: str, status: str) -> None:
-        self._flavor_statuses[name] = status
-        self._flavor_count = len(self._flavor_statuses)
-        self._render_both()
-
-    def set_disconnected(self, countdown: int) -> None:
-        self._disconnected = True
-        self._reconnect_in = countdown
-        self.add_class("disconnected")
-        self._render_both()
-
-    def set_connected(self) -> None:
-        self._disconnected = False
-        self.remove_class("disconnected")
-        self._render_both()
-
-
-# ─── Key hints bar (replaces Footer) ──────────────────────────────────────────
-
-
-class KeyHints(Static):
-    """One-line keybinding strip docked at the very bottom."""
-
-    DEFAULT_CSS = """
-    KeyHints {
-        dock: bottom;
-        height: 1;
-        background: $panel;
-        color: $text-muted;
-        padding: 0 1;
-    }
-    """
-
-    HINTS = (
-        "[dim]ctrl+1-4[/] tabs  "
-        "[dim]esc[/] clear  "
-        "[dim]esc×2[/] stop  "
-        "[dim]q[/] quit  "
-        "[dim]@flavor[/] route"
-    )
-
-    def render(self) -> str:
-        return self.HINTS
-
-
-# ─── Global empty state ────────────────────────────────────────────────────────
-
-
-class EmptyState(Static):
-    """Shown when no flavor tabs exist yet."""
-
-    DEFAULT_CSS = """
-    EmptyState {
-        height: 1fr;
-        content-align: center middle;
-        text-align: center;
-        color: $text-muted;
-        text-style: italic;
-    }
-    EmptyState.hidden {
-        display: none;
-    }
-    """
-
-    def __init__(self, host: str = "", **kwargs: object) -> None:
-        super().__init__(**kwargs)
-        self._host = host
-        self._flavors: list[str] = []
-        self._connecting = True
-
-    def set_connecting(self, host: str) -> None:
-        self._connecting = True
-        self._refresh_text()
-
-    def set_flavors(self, flavors: list[str]) -> None:
-        self._connecting = False
-        self._flavors = flavors
-        self._refresh_text()
-
-    def _refresh_text(self) -> None:
-        if self._connecting:
-            text = f"Connecting to {self._host}…"
-        elif not self._flavors:
-            text = f"Connected · no flavors found on {self._host}"
-        else:
-            flavor_list = "  ".join(f"[bold]{f}[/]" for f in self._flavors)
-            text = (
-                f"Connected to {self._host}\n\n"
-                f"Available flavors:  {flavor_list}\n\n"
-                "[dim]Send a message — or type [/][bold]@assistant hello[/]"
-                "[dim] to target a flavor[/]"
-            )
-        self.update(text)
-
-
-# ─── Tool sidebar ──────────────────────────────────────────────────────────────
-
-
-class ToolSidebar(ScrollableContainer):
-    """Scrollable tool call log for one flavor tab."""
-
-    DEFAULT_CSS = """
-    ToolSidebar {
-        width: 30%;
-        border-left: solid $primary-darken-3;
-        background: $surface-darken-1;
-    }
-    ToolSidebar .sidebar-title {
-        background: $primary-darken-3;
-        color: $text-muted;
-        text-style: bold;
-        padding: 0 1;
-        height: 1;
-    }
-    ToolSidebar .tool-entry {
-        padding: 0 1;
-        height: auto;
-    }
-    ToolSidebar .tool-dim {
-        color: $text-disabled;
-    }
-    ToolSidebar .idle-sep {
-        color: $text-disabled;
-        padding: 0 1;
-    }
-    ToolSidebar .empty-hint {
-        color: $text-disabled;
-        text-style: italic;
-        padding: 1 1;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        yield Label("TOOL CALLS", classes="sidebar-title")
-        yield Label("no tool calls yet", classes="empty-hint", id="tools-empty")
-
-    def add_tool(self, tool: str, arg: str, status: str) -> None:
-        try:
-            self.query_one("#tools-empty").remove()
-        except NoMatches:
-            pass
-        ts = datetime.now().strftime("%H:%M")
-        status_markup = {
-            "started": "[yellow]⋯[/]",
-            "in_progress": "[yellow]⋯[/]",
-            "completed": "[green]✓[/]",
-            "done": "[green]✓[/]",
-            "error": "[red]✗[/]",
-            "failed": "[red]✗[/]",
-        }.get(status, f"[dim]{status}[/]")
-        arg_short = (arg[:22] + "…") if len(arg) > 24 else arg
-        markup = f"[dim]{ts}[/] [bold orange1]⚙ {tool}[/]\n[dim]{arg_short}[/] {status_markup}"
-        self.mount(Label(markup, classes="tool-entry", markup=True))
-        self.scroll_end(animate=False)
-
-    def seal_turn(self) -> None:
-        for child in self.query(".tool-entry"):
-            child.add_class("tool-dim")
-        self.mount(Label("── idle ──", classes="idle-sep"))
-        self.scroll_end(animate=False)
-
-
-# ─── Thinking block ────────────────────────────────────────────────────────────
-
-
-class _ThinkingBlock(Vertical):
-    DEFAULT_CSS = """
-    _ThinkingBlock { height: auto; padding: 0 1; }
-    _ThinkingBlock Label { color: #4a5a6a; text-style: italic; }
-    _ThinkingBlock.faded Label { color: #2e3e4e; }
-    """
-
-    def add_line(self, text: str) -> None:
-        self.mount(Label(f"~ {text}"))
-
-
-# ─── Conversation pane ─────────────────────────────────────────────────────────
-
-
-class ConversationPane(Vertical):
-    """Scrollable conversation with inline thinking stream."""
-
-    DEFAULT_CSS = """
-    ConversationPane {
-        width: 70%;
-    }
-    ConversationPane #conv-scroll {
-        height: 1fr;
-    }
-    ConversationPane RichLog {
-        border: none;
-        padding: 0 1;
-        scrollbar-size: 1 1;
-        height: auto;
-    }
-    ConversationPane .conv-empty {
-        color: $text-disabled;
-        text-style: italic;
-        padding: 1 2;
-    }
-    ConversationPane .new-badge {
-        dock: bottom;
-        background: $primary-darken-2;
-        color: $text;
-        height: 1;
-        padding: 0 1;
-        display: none;
-    }
-    ConversationPane .new-badge.visible {
-        display: block;
-    }
-    """
-
-    def __init__(self, flavor: str = "", **kwargs: object) -> None:
-        super().__init__(**kwargs)
-        self._flavor = flavor
-        self._scroll_locked = False
-        self._active_thinking: _ThinkingBlock | None = None
-        self._has_content = False
-
-    def compose(self) -> ComposeResult:
-        with ScrollableContainer(id="conv-scroll"):
-            yield RichLog(highlight=False, markup=True, auto_scroll=False)
-        yield Label(
-            f"No messages yet — type below to chat with [bold]{self._flavor or 'a flavor'}[/]",
-            classes="conv-empty",
-            id="conv-empty",
-            markup=True,
-        )
-        yield Label("↓ new content  (End to resume)", classes="new-badge", id="new-badge")
-
-    def _clear_empty(self) -> None:
-        if not self._has_content:
-            self._has_content = True
-            try:
-                self.query_one("#conv-empty").remove()
-            except NoMatches:
-                pass
-
-    def _sc(self) -> ScrollableContainer:
-        return self.query_one("#conv-scroll", ScrollableContainer)
-
-    def _log(self) -> RichLog:
-        return self.query_one("RichLog")
-
-    def on_mouse_scroll_up(self, _: MouseScrollUp) -> None:
-        sc = self._sc()
-        if sc.scroll_y < sc.max_scroll_y:
-            self._scroll_locked = True
-            try:
-                self.query_one("#new-badge").add_class("visible")
-            except NoMatches:
-                pass
-
-    def append_user(self, text: str) -> None:
-        self._clear_empty()
-        ts = datetime.now().strftime("%H:%M")
-        self._log().write(f"[dim]{ts}[/]  [bold yellow]you[/]  {text}\n")
-        self._scroll()
-
-    def append_chunk(self, text: str) -> None:
-        self._clear_empty()
-        self._log().write(text, expand=False)
-        self._scroll()
-
-    def start_agent_turn(self, flavor: str) -> None:
-        self._clear_empty()
-        ts = datetime.now().strftime("%H:%M")
-        self._log().write(f"\n[dim]{ts}[/]  [bold green]{flavor}[/]  [dim yellow]● thinking…[/]\n")
-        block = _ThinkingBlock()
-        self._active_thinking = block
-        self._sc().mount(block)
-
-    def append_thinking(self, text: str) -> None:
-        if self._active_thinking is not None:
-            self._active_thinking.add_line(text)
-        self._scroll()
-
-    def seal_turn(self) -> None:
-        if self._active_thinking is not None:
-            self._active_thinking.add_class("faded")
-            self._active_thinking = None
-        self._log().write("\n")
-
-    def resume_scroll(self) -> None:
-        self._scroll_locked = False
-        try:
-            self.query_one("#new-badge").remove_class("visible")
-        except NoMatches:
-            pass
-        self._sc().scroll_end(animate=False)
-
-    def _scroll(self) -> None:
-        if self._scroll_locked:
-            try:
-                self.query_one("#new-badge").add_class("visible")
-            except NoMatches:
-                pass
-        else:
-            self._sc().scroll_end(animate=False)
-
-
-# ─── Command palette ───────────────────────────────────────────────────────────
-
-
-class CommandPalette(Widget):
-    """Slash command autocomplete overlay above the input bar."""
-
-    DEFAULT_CSS = """
-    CommandPalette {
-        dock: bottom;
-        height: auto;
-        max-height: 12;
-        background: $surface;
-        border: solid $primary-darken-2;
-        display: none;
-        margin-bottom: 4;
-        margin-left: 1;
-        margin-right: 1;
-    }
-    CommandPalette.visible { display: block; }
-    CommandPalette ListView {
-        height: auto;
-        max-height: 12;
-        background: $surface;
-    }
-    """
-
-    _current_prefix: str = ""
-
-    def compose(self) -> ComposeResult:
-        yield ListView(id="palette-list")
-
-    def show(self, prefix: str) -> None:
-        self._current_prefix = prefix
-        matches = filter_commands(prefix)
-        lv = self.query_one("#palette-list", ListView)
-        lv.clear()
-        for cmd in matches[:12]:
-            markup = f"[bold]{cmd['command']}[/]  [dim]{cmd['category']} · {cmd['description']}[/]"
-            lv.append(ListItem(Label(markup, markup=True)))
-        self.add_class("visible")
-
-    def hide(self) -> None:
-        self.remove_class("visible")
-
-    def is_open(self) -> bool:
-        return "visible" in self.classes
-
-    def highlighted_command(self) -> str | None:
-        lv = self.query_one("#palette-list", ListView)
-        idx = lv.index
-        matches = filter_commands(self._current_prefix)
-        if idx is not None and idx < len(matches):
-            return matches[idx]["command"]
-        return None
-
-
-# ─── Main app ──────────────────────────────────────────────────────────────────
-
-
-class Nx01TuiApp(App):
-    """NX01 fleet operator cockpit."""
+    CSS_PATH = "app.tcss"
 
     BINDINGS = [
-        Binding("ctrl+1", "switch_tab(0)", "Tab 1", show=False),
-        Binding("ctrl+2", "switch_tab(1)", "Tab 2", show=False),
-        Binding("ctrl+3", "switch_tab(2)", "Tab 3", show=False),
-        Binding("ctrl+4", "switch_tab(3)", "Tab 4", show=False),
-        Binding("ctrl+end", "resume_scroll", "Resume scroll", show=False),
-        Binding("escape", "handle_escape", "Esc", show=False),
-        Binding("q", "quit_if_empty", "Quit", show=True),
+        Binding("ctrl+p", "command_palette", "Commands", show=True),
+        Binding("ctrl+s", "open_sessions", "Sessions", show=True),
+        Binding("ctrl+m", "open_memory", "Memory", show=True),
+        Binding("ctrl+k", "open_skills", "Skills", show=False),
+        Binding("ctrl+t", "open_tools", "Tools", show=False),
+        Binding("ctrl+n", "new_session", "New", show=False),
+        Binding("ctrl+b", "toggle_sidebar", "Sidebar", show=True),
+        Binding("ctrl+f", "search", "Search", show=True),
+        Binding("ctrl+c", "stop_generation", "Stop", show=True),
+        Binding("question_mark", "help", "Help", show=True),
+        Binding("q", "request_quit", "Quit", show=True),
+        Binding("d", "toggle_dark", "Theme", show=False),
+        Binding("y", "yank_focused", "Copy", show=False),
+        Binding("Y", "yank_last_code", "Copy last", show=False),
     ]
 
-    DEFAULT_CSS = """
-    Screen { layout: vertical; }
-
-    TabbedContent {
-        height: 1fr;
-        display: none;
-    }
-    TabbedContent.visible {
-        display: block;
-    }
-    TabPane { padding: 0; }
-
-    #input-row {
-        dock: bottom;
-        height: 3;
-        border-top: solid $primary-darken-3;
-        background: $surface-darken-1;
-        align: left middle;
-        padding: 0 1;
-        layer: 2;
-    }
-    #msg-input { width: 1fr; }
-    #flavor-badge {
-        width: auto;
-        padding: 0 1;
-        color: $primary;
-    }
-    #cmd-palette {
-        dock: bottom;
-        layer: 3;
-    }
-    """
-
-    def __init__(self, base_url: str = "http://localhost:8000", api_key: str | None = None):
-        super().__init__()
-        self._base_url = base_url.rstrip("/")
-        self._api_key = api_key
-        self._host = _host(base_url)
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str | None = None,
+        flavors: list[str] | None = None,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.base_url = base_url
+        self.api_key = api_key
+        self.config = ConnectionConfig(base_url=base_url, api_key=api_key)
+        self.client = Nx01Client(self.config)
         self._states: dict[str, FlavorState] = {}
-        self._esc_time: float = 0.0
-        self._thinking_started: set[str] = set()
-        self._pending_events: dict[str, list[dict]] = {}
-        self._first_tab_mounted = False
+        self._panes: dict[str, FlavorPane] = {}
+        self._initial_flavors = flavors or []
+        self._connected = False
+        self._current_correlation_id: str | None = None
+        self._always_allow_tools: set[str] = set()
+
+    # ── Composition ──────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
-        yield FleetHeader(host=self._host, id="fleet-header")
-        yield EmptyState(host=self._host, id="empty-state")
-        yield TabbedContent(id="tabs")
-        with Horizontal(id="input-row"):
-            yield Input(placeholder="message / @flavor / /command…", id="msg-input")
-            yield Label("select flavor ▾", id="flavor-badge")
-        yield CommandPalette(id="cmd-palette")
-        yield KeyHints()
+        yield AppHeader(id="app-header")
+        yield TabbedContent(id="flavor-tabs")
+        yield StatusBar(id="status-bar")
+        yield Footer()
 
-    def on_mount(self) -> None:
-        self.run_worker(self._prefetch_flavors(), exclusive=False, name="prefetch")
-        self.run_worker(self._sse_worker(), exclusive=True, name="sse")
-        self.query_one("#msg-input", Input).focus()
+    async def on_mount(self) -> None:
+        domain = urlparse(self.base_url).netloc or self.base_url
+        self.query_one(AppHeader).domain = domain
+        self.run_worker(self._bootstrap(), exclusive=True, name="bootstrap")
 
-    # ── Pre-fetch ──────────────────────────────────────────────────────────────
+    async def on_unmount(self) -> None:
+        await self.client.close()
 
-    async def _prefetch_flavors(self) -> None:
-        es = self.query_one("#empty-state", EmptyState)
-        es.set_connecting(self._host)
+    # ── Bootstrap (flavor discovery → SSE worker) ────────────────────
 
-        url = f"{self._base_url}/health"
-        headers: dict[str, str] = {}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+    async def _bootstrap(self) -> None:
+        flavors: list[str] = list(self._initial_flavors)
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(url, headers=headers)
-                data = resp.json()
-                flavors: dict = data.get("flavors", {})
-                self.call_later(es.set_flavors, list(flavors.keys()))
-                for name, info in flavors.items():
-                    if name not in self._states:
-                        status = info.get("status", "idle") if isinstance(info, dict) else "idle"
-                        self._states[name] = FlavorState(name=name, status=status)
-                        self._pending_events.setdefault(name, [])
-                        self.call_later(self._mount_flavor_tab, name)
-        except Exception:
-            self.call_later(es.set_flavors, [])
+            snapshot = await self.client.get_flavors()
+            if isinstance(snapshot, dict):
+                flavors = list(snapshot.keys())
+            elif isinstance(snapshot, list):
+                flavors = [f.get("name", "") for f in snapshot if isinstance(f, dict)]
+            self.query_one(AppHeader).connected = True
+            self._connected = True
+        except httpx.HTTPError as exc:
+            logger.warning("flavor discovery failed: %s", exc)
+            self.notify(f"Could not discover flavors: {exc}", severity="warning")
+            if not flavors:
+                flavors = ["assistant", "operator"]
 
-    # ── SSE worker ─────────────────────────────────────────────────────────────
+        for name in flavors:
+            self._ensure_flavor(name)
 
-    async def _sse_worker(self) -> None:
-        url = f"{self._base_url}/events"
-        headers: dict[str, str] = {}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        self.run_worker(self._sse_loop(), exclusive=True, name="sse", group="net")
 
-        backoff = 1
-        while True:
-            try:
-                async with httpx.AsyncClient(timeout=None) as client:
-                    async with client.stream("GET", url, headers=headers) as resp:
-                        resp.raise_for_status()
-                        backoff = 1
-                        try:
-                            header = self.query_one("#fleet-header", FleetHeader)
-                            self.call_later(header.set_connected)
-                        except NoMatches:
-                            pass
-                        _event_type = ""
-                        data_lines: list[str] = []
-                        async for line in resp.aiter_lines():
-                            if line.startswith("event:"):
-                                _event_type = line[6:].strip()
-                            elif line.startswith("data:"):
-                                data_lines.append(line[5:].strip())
-                            elif not line or line.startswith(":"):
-                                if data_lines:
-                                    raw = "\n".join(data_lines)
-                                    try:
-                                        payload = json.loads(raw)
-                                    except json.JSONDecodeError:
-                                        pass
-                                    else:
-                                        self.call_later(self._handle_event, payload)
-                                _event_type = ""
-                                data_lines = []
-            except Exception:
-                pass
+    def _ensure_flavor(self, name: str) -> None:
+        if name in self._states:
+            return
+        self._states[name] = FlavorState(name=name)
+        tabs = self.query_one("#flavor-tabs", TabbedContent)
+        pane = FlavorPane(flavor=name)
+        self._panes[name] = pane
+        tabs.add_pane(TabPane(name, pane, id=f"tab-{name}"))
 
-            for countdown in range(backoff, 0, -1):
-                try:
-                    self.call_later(
-                        self.query_one("#fleet-header", FleetHeader).set_disconnected, countdown
-                    )
-                except NoMatches:
-                    pass
-                await asyncio.sleep(1)
-            backoff = min(backoff * 2, 30)
+    # ── SSE worker ───────────────────────────────────────────────────
 
-    # ── Event dispatch ─────────────────────────────────────────────────────────
+    async def _sse_loop(self) -> None:
+        try:
+            async for kind, payload in stream_with_backoff(self.client):
+                if kind == "event":
+                    self.post_message(SseMessage(payload))
+                elif kind == "disconnect":
+                    self.post_message(ConnectionStatusMessage("disconnected", payload))
+                elif kind == "reconnecting":
+                    self.post_message(ConnectionStatusMessage("reconnecting", payload))
+                elif kind == "connected":
+                    self.post_message(ConnectionStatusMessage("connected"))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("SSE loop crashed: %s", exc)
+            self.post_message(ConnectionStatusMessage("disconnected", exc))
 
-    def _handle_event(self, payload: dict) -> None:
-        flavor = payload.get("flavor", "")
+    # ── Message dispatch ─────────────────────────────────────────────
+
+    def on_sse_message(self, message: SseMessage) -> None:
+        self._dispatch_event(message.event)
+
+    def on_connection_status_message(self, message: ConnectionStatusMessage) -> None:
+        hdr = self.query_one(AppHeader)
+        if message.kind == "connected":
+            hdr.connected = True
+            self._connected = True
+            self.notify("Connected", severity="information", timeout=2)
+        elif message.kind == "disconnected":
+            hdr.connected = False
+            self._connected = False
+            self.notify(f"Disconnected: {message.detail}", severity="warning")
+        elif message.kind == "reconnecting":
+            self.notify(
+                f"Reconnecting… (attempt {message.detail})", severity="information", timeout=2
+            )
+
+    def _dispatch_event(self, event: SseEvent) -> None:
+        flavor = event.flavor or self._active_flavor()
         if not flavor:
             return
-        if flavor not in self._states:
-            self._states[flavor] = FlavorState(name=flavor)
-            self._pending_events.setdefault(flavor, [])
-            self._mount_flavor_tab(flavor)
-
+        self._ensure_flavor(flavor)
         state = self._states[flavor]
-        route_event(state, payload)
-
-        try:
-            self.query_one(f"#conv-{flavor}", ConversationPane)
-        except NoMatches:
-            self._pending_events.setdefault(flavor, []).append(payload)
+        pane = self._panes.get(flavor)
+        if pane is None:
             return
 
-        self._dispatch_to_pane(flavor, payload)
-
-    def _dispatch_to_pane(self, flavor: str, payload: dict) -> None:
-        try:
-            conv = self.query_one(f"#conv-{flavor}", ConversationPane)
-            sidebar = self.query_one(f"#tools-{flavor}", ToolSidebar)
-        except NoMatches:
+        if isinstance(event, PermissionRequiredEvent):
+            self.run_worker(self._handle_permission(event), exclusive=False)
             return
 
-        kind = payload.get("type", "")
-        if kind == "AgentChunkEvent":
-            conv.append_chunk(payload.get("text", ""))
-        elif kind == "AgentThinkingEvent":
-            if flavor not in self._thinking_started:
-                self._thinking_started.add(flavor)
-                conv.start_agent_turn(flavor)
-            conv.append_thinking(payload.get("text", ""))
-        elif kind == "AgentTurnDoneEvent":
-            self._thinking_started.discard(flavor)
-            conv.seal_turn()
-            sidebar.seal_turn()
-        elif kind == "ToolCallEvent":
-            sidebar.add_tool(
-                payload.get("tool", "?"),
-                payload.get("title") or "",
-                payload.get("status", ""),
+        route_event(state, event)
+
+        conv = pane.conversation
+        if isinstance(event, AgentChunkEvent):
+            conv.append_assistant(event.text)
+        elif isinstance(event, AgentThinkingEvent):
+            conv.append_thinking(event.text)
+        elif isinstance(event, AgentTurnDoneEvent):
+            conv.end_thinking()
+            conv.end_assistant()
+        elif isinstance(event, ToolCallEvent):
+            call_id = event.raw.get("call_id", "") or f"{event.tool}-{event.at}"
+            tc = state.tool_calls[-1] if state.tool_calls else None
+            block = conv.get_tool(call_id) or conv.start_tool(
+                event.tool, args=event.title or "", call_id=call_id
             )
-        elif kind == "FlavorStatusEvent":
-            state = self._states[flavor]
-            self._update_tab_label(flavor, state.status)
-            self.query_one("#fleet-header", FleetHeader).update_flavor(flavor, state.status)
-
-    # ── Tab management ─────────────────────────────────────────────────────────
-
-    def _mount_flavor_tab(self, flavor: str) -> None:
-        async def _do() -> None:
-            tabs = self.query_one("#tabs", TabbedContent)
-            status = self._states.get(flavor, FlavorState(name=flavor)).status
-            label = f"{_dot(status)} {flavor}"
-            pane = TabPane(label, id=f"tab-{flavor}")
-            await tabs.add_pane(pane)
-
-            row = Horizontal()
-            conv = ConversationPane(flavor=flavor, id=f"conv-{flavor}")
-            sidebar = ToolSidebar(id=f"tools-{flavor}")
-            await pane.mount(row)
-            await row.mount(conv, sidebar)
-
-            # Show tabs, hide empty state on first tab
-            if not self._first_tab_mounted:
-                self._first_tab_mounted = True
-                tabs.add_class("visible")
-                try:
-                    self.query_one("#empty-state").add_class("hidden")
-                except NoMatches:
-                    pass
-                tabs.active = f"tab-{flavor}"
-
-            # Update header
-            self.query_one("#fleet-header", FleetHeader).update_flavor(flavor, status)
-
-            # Flush buffered events
-            for ev in self._pending_events.pop(flavor, []):
-                self._dispatch_to_pane(flavor, ev)
-
-        self.call_later(_do)
-
-    def _update_tab_label(self, flavor: str, status: str) -> None:
-        try:
-            tab = self.query_one("#tabs", TabbedContent).get_tab(f"tab-{flavor}")
-            tab.label = f"{_dot(status)} {flavor}"
-        except (NoMatches, Exception):
+            if tc is not None:
+                block.set_status(tc.status)
+            if event.output:
+                block.append_output(event.output)
+        elif isinstance(event, SkillLoadedEvent):
+            conv.start_skill(event.skill_name, event.skill_size)
+        elif isinstance(event, FlavorStatusEvent):
             pass
 
-    # ── Tab switching ──────────────────────────────────────────────────────────
+        pane.set_state(state.state)
+        pane.sync_sidebar(state)
 
-    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        self.query_one("#msg-input", Input).focus()
-        if event.pane and event.pane.id:
-            flavor = str(event.pane.id).removeprefix("tab-")
-            status = self._states.get(flavor, FlavorState(name=flavor)).status
-            self.query_one("#flavor-badge", Label).update(f"{_dot(status)} {flavor} ▾")
+        if flavor == self._active_flavor():
+            self._refresh_status_bar(state)
 
-    def action_switch_tab(self, index: int) -> None:
-        try:
-            tabs = self.query_one("#tabs", TabbedContent)
-            panes = list(tabs.query_one("ContentSwitcher").children)
-            if index < len(panes):
-                tabs.active = panes[index].id
-        except NoMatches:
-            pass
-
-    # ── Input ──────────────────────────────────────────────────────────────────
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        palette = self.query_one("#cmd-palette", CommandPalette)
-        if event.value.startswith("/"):
-            palette.show(event.value)
+    async def _handle_permission(self, event: PermissionRequiredEvent) -> None:
+        if event.tool in self._always_allow_tools:
+            await self.client.resolve_permission(event.permission_id, "allow")
+            return
+        decision = await self.push_screen_wait(
+            PermissionModal(
+                tool=event.tool,
+                args=str(event.args),
+                risk=event.risk,
+                description=event.description,
+            )
+        )
+        if decision == "always_allow":
+            self._always_allow_tools.add(event.tool)
+            await self.client.resolve_permission(event.permission_id, "allow")
         else:
-            palette.hide()
+            await self.client.resolve_permission(event.permission_id, decision or "deny")
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        palette = self.query_one("#cmd-palette", CommandPalette)
-        inp = self.query_one("#msg-input", Input)
-        text = event.value.strip()
+    # ── Helpers ──────────────────────────────────────────────────────
 
-        if palette.is_open():
-            selected = palette.highlighted_command()
-            palette.hide()
-            if selected:
-                inp.value = selected + " "
-                inp.focus()
-            return
-
-        if not text:
-            return
-        inp.clear()
-        await self._send_message(text)
-
-    def _resolve_flavor(self, text: str) -> tuple[str, str]:
-        """Parse optional @flavor prefix → (flavor, message)."""
-        if text.startswith("@"):
-            parts = text[1:].split(" ", 1)
-            if len(parts) == 2 and parts[0] in self._states:
-                return parts[0], parts[1].strip()
-        return "", text
-
-    async def _send_message(self, text: str) -> None:
-        at_flavor, message = self._resolve_flavor(text)
-
-        tabs = self.query_one("#tabs", TabbedContent)
-        active_id = tabs.active
-
-        if at_flavor:
-            flavor = at_flavor
-            tabs.active = f"tab-{flavor}"
-        elif active_id:
-            flavor = str(active_id).removeprefix("tab-")
-        elif self._states:
-            flavor = next(iter(self._states))
-            tabs.active = f"tab-{flavor}"
-        else:
-            return
-
+    def _active_flavor(self) -> str:
         try:
-            self.query_one(f"#conv-{flavor}", ConversationPane).append_user(message)
-        except NoMatches:
+            active = self.query_one("#flavor-tabs", TabbedContent).active
+            if active and active.startswith("tab-"):
+                return active[4:]
+        except Exception:  # noqa: BLE001
+            pass
+        return next(iter(self._states), "")
+
+    def _refresh_status_bar(self, state: FlavorState) -> None:
+        bar = self.query_one(StatusBar)
+        bar.flavor = state.name
+        bar.state = state.state
+        bar.tokens = state.token_usage.get("total", 0)
+
+    # ── Input submission ─────────────────────────────────────────────
+
+    def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
+            return
+        state = self._states[flavor]
+        state.clear_for_new_turn()
+        self._panes[flavor].conversation.add_user_message(event.text)
+        self._panes[flavor].set_state(AgentState.THINKING)
+        self.run_worker(self._send_message(flavor, event.text), exclusive=False)
+
+    async def _send_message(self, flavor: str, text: str) -> None:
+        try:
+            response = await self.client.send_message(flavor, text)
+            self._current_correlation_id = response.get("correlation_id")
+        except httpx.HTTPError as exc:
+            self._states[flavor].set_error(str(exc))
+            self._panes[flavor].set_state(AgentState.ERROR)
+            self.notify(f"Send failed: {exc}", severity="error")
+
+    # ── Search ───────────────────────────────────────────────────────
+
+    def on_search_bar_query(self, event: SearchBar.Query) -> None:
+        if not event.query:
+            return
+        self.notify(f"Search: {event.query}", timeout=1)
+
+    def on_search_bar_dismiss(self, _event: SearchBar.Dismiss) -> None:
+        flavor = self._active_flavor()
+        if flavor and flavor in self._panes:
+            self._panes[flavor].input.focus()
+
+    # ── Actions (keybindings) ────────────────────────────────────────
+
+    def action_command_palette(self) -> None:
+        def on_dismissed(result: object) -> None:
+            if isinstance(result, str) and result:
+                self.run_worker(self._handle_command_action(result), exclusive=False)
+
+        self.push_screen(CommandModal(default_commands()), on_dismissed)
+
+    async def _handle_command_action(self, action: str) -> None:
+        mapping: dict[str, str] = {
+            "open_sessions": "open_sessions",
+            "open_memory": "open_memory",
+            "open_skills": "open_skills",
+            "open_tools": "open_tools",
+            "new_session": "new_session",
+            "open_cost": "open_cost",
+            "open_config": "open_config",
+            "switch_flavor": "switch_flavor",
+            "switch_model": "switch_model",
+            "toggle_sidebar": "toggle_sidebar",
+            "toggle_theme": "toggle_dark",
+            "search": "search",
+            "help": "help",
+            "quit": "request_quit",
+        }
+        method = mapping.get(action)
+        if method is None:
+            return
+        actor = getattr(self, f"action_{method}", None)
+        if actor is None:
+            return
+        result = actor()
+        if asyncio.iscoroutine(result):
+            await result
+
+    def action_open_sessions(self) -> None:
+        self.run_worker(self._open_sessions(), exclusive=False)
+
+    async def _open_sessions(self) -> None:
+        try:
+            raw = await self.client.list_sessions()
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Sessions unavailable: {exc}", severity="warning")
+            raw = []
+        sessions = [
+            SessionEntry(
+                session_id=s.get("id", ""),
+                flavor=s.get("flavor", self._active_flavor()),
+                title=s.get("title", "Untitled"),
+                last_active=s.get("last_active", ""),
+                message_count=int(s.get("message_count", 0)),
+                preview=s.get("preview", ""),
+            )
+            for s in raw
+        ]
+        result = await self.push_screen_wait(SessionsModal(sessions))
+        if isinstance(result, SessionAction):
+            await self._handle_session_action(result)
+
+    async def _handle_session_action(self, action: SessionAction) -> None:
+        try:
+            if action.action == "resume":
+                await self.client.resume_session(action.session_id)
+                self.notify(f"Resumed {action.session_id[:8]}")
+            elif action.action == "fork":
+                await self.client.fork_session(action.session_id)
+                self.notify(f"Forked {action.session_id[:8]}")
+            elif action.action == "delete":
+                confirmed = await self.push_screen_wait(
+                    ConfirmModal("Delete this session? This cannot be undone.", dangerous=True)
+                )
+                if confirmed:
+                    await self.client.delete_session(action.session_id)
+                    self.notify("Session deleted")
+            elif action.action == "new":
+                self.notify("New session started")
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Session action failed: {exc}", severity="error")
+
+    def action_open_memory(self) -> None:
+        self.run_worker(self._open_memory(), exclusive=False)
+
+    async def _open_memory(self) -> None:
+        try:
+            agent = await self.client.read_memory("agent")
+            user = await self.client.read_memory("user")
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Memory unavailable: {exc}", severity="warning")
+            agent, user = [], []
+        await self.push_screen_wait(MemoryModal(agent_entries=agent, user_entries=user))
+
+    def action_open_skills(self) -> None:
+        self.run_worker(self._open_skills(), exclusive=False)
+
+    async def _open_skills(self) -> None:
+        try:
+            skills = await self.client.list_skills(self._active_flavor())
+        except Exception:  # noqa: BLE001
+            skills = []
+        await self.push_screen_wait(SkillsModal(skills))
+
+    def action_open_tools(self) -> None:
+        self.run_worker(self._open_tools(), exclusive=False)
+
+    async def _open_tools(self) -> None:
+        try:
+            tools_resp = await self.client.get_tools(self._active_flavor())
+            tools = tools_resp.get("tools", []) if isinstance(tools_resp, dict) else tools_resp
+        except Exception:  # noqa: BLE001
+            tools = []
+        await self.push_screen_wait(ToolsModal(tools))
+
+    def action_open_cost(self) -> None:
+        flavor = self._active_flavor()
+        cost = {"tokens": self._states[flavor].token_usage} if flavor in self._states else {}
+        self.push_screen(CostModal(cost))
+
+    def action_open_config(self) -> None:
+        self.push_screen(
+            ConfigModal({"base_url": self.base_url, "model": self.query_one(AppHeader).model})
+        )
+
+    def action_switch_model(self) -> None:
+        self.run_worker(self._switch_model(), exclusive=False)
+
+    async def _switch_model(self) -> None:
+        try:
+            models_resp = await self.client._client.get("/v1/models")
+            data = models_resp.json()
+            models = [m.get("id", "") for m in data.get("data", []) if isinstance(m, dict)]
+        except Exception:  # noqa: BLE001
+            models = []
+        chosen = await self.push_screen_wait(ModelPickerModal(models))
+        if chosen:
+            self.query_one(AppHeader).model = chosen
+            self.notify(f"Model: {chosen}")
+
+    async def action_new_session(self) -> None:
+        flavor = self._active_flavor()
+        if flavor and flavor in self._states:
+            self._states[flavor].clear_for_new_turn()
+            self._states[flavor].messages = []
+            self.notify(f"New session in {flavor}")
+
+    def action_toggle_sidebar(self) -> None:
+        for pane in self._panes.values():
+            sidebar = pane.sidebar
+            if sidebar.has_class("hidden"):
+                sidebar.remove_class("hidden")
+            else:
+                sidebar.add_class("hidden")
+
+    def action_search(self) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
+            return
+        try:
+            bar = self.query_one(f"#search-{flavor}", SearchBar)
+            bar.show()
+        except Exception:  # noqa: BLE001
             pass
 
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-        body = json.dumps({"target_flavor": flavor, "message": message}).encode()
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(f"{self._base_url}/message", content=body, headers=headers)
-        except Exception:
-            pass
+    def action_help(self) -> None:
+        self.push_screen(HelpModal())
 
-    # ── Actions ────────────────────────────────────────────────────────────────
+    def action_request_quit(self) -> None:
+        self.exit()
 
-    def action_resume_scroll(self) -> None:
-        tabs = self.query_one("#tabs", TabbedContent)
-        active_id = tabs.active
-        if not active_id:
+    def action_stop_generation(self) -> None:
+        if self._current_correlation_id:
+            self.run_worker(self.client.abort(self._current_correlation_id), exclusive=False)
+            self.notify("Stop sent")
+
+    def action_switch_flavor(self) -> None:
+        tabs = self.query_one("#flavor-tabs", TabbedContent)
+        names = list(self._states)
+        if not names:
             return
-        flavor = str(active_id).removeprefix("tab-")
-        try:
-            self.query_one(f"#conv-{flavor}", ConversationPane).resume_scroll()
-        except NoMatches:
-            pass
+        current = self._active_flavor()
+        idx = (names.index(current) + 1) % len(names) if current in names else 0
+        tabs.active = f"tab-{names[idx]}"
 
-    def action_handle_escape(self) -> None:
-        palette = self.query_one("#cmd-palette", CommandPalette)
-        if palette.is_open():
-            palette.hide()
+    def action_yank_focused(self) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
             return
-        now = time.time()
-        if now - self._esc_time < 0.5:
-            self.run_worker(self._send_message("/stop"), name="stop-send")
-        else:
-            self._esc_time = now
-            self.query_one("#msg-input", Input).clear()
+        state = self._states[flavor]
+        for msg in reversed(state.messages):
+            if msg.get("type") == "chunk" and msg.get("text"):
+                self._copy(msg["text"])
+                return
+        self.notify("Nothing to copy")
 
-    def action_quit_if_empty(self) -> None:
-        if not self.query_one("#msg-input", Input).value:
-            self.exit()
+    def action_yank_last_code(self) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
+            return
+        for msg in reversed(self._states[flavor].messages):
+            if msg.get("type") == "chunk":
+                code = self._extract_last_code_block(msg.get("text", ""))
+                if code:
+                    self._copy(code)
+                    return
+        self.notify("No code block")
+
+    @staticmethod
+    def _extract_last_code_block(text: str) -> str:
+        lines = text.splitlines()
+        end = -1
+        for i in range(len(lines) - 1, -1, -1):
+            if lines[i].startswith("```"):
+                end = i
+                break
+        if end <= 0:
+            return ""
+        start = -1
+        for i in range(end - 1, -1, -1):
+            if lines[i].startswith("```"):
+                start = i
+                break
+        if start < 0:
+            return ""
+        return "\n".join(lines[start + 1 : end])
+
+    def _copy(self, text: str) -> None:
+        try:
+            self.copy_to_clipboard(text)
+            self.notify(f"Copied {len(text)} chars")
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Copy failed: {exc}", severity="error")
+
+    # ── Tab change ───────────────────────────────────────────────────
+
+    def on_tabbed_content_tab_activated(self, _event: TabbedContent.TabActivated) -> None:
+        flavor = self._active_flavor()
+        if flavor and flavor in self._states:
+            self._refresh_status_bar(self._states[flavor])
+
+    # ── Responsive ───────────────────────────────────────────────────
+
+    def on_resize(self, event) -> None:  # type: ignore[no-untyped-def]
+        width = event.size.width
+        for pane in self._panes.values():
+            pane.sidebar.apply_terminal_width(width)
+
+
+# Back-compat alias for CLI: existing entry point used `Nx01TuiApp`.
+Nx01TuiApp = Nx01App
