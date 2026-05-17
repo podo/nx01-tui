@@ -25,6 +25,18 @@ from .tool_call_block import ToolCallBlock
 
 _FENCE_RE = re.compile(r"```(\w+)?\n(.*?)\n```", re.DOTALL)
 
+
+class UnreadDivider(Static):
+    DEFAULT_CSS = """
+    UnreadDivider {
+        height: 1;
+        text-align: center;
+        color: $warning;
+        margin: 1 0;
+    }
+    """
+
+
 _EMPTY_HINT = (
     "[bold]Welcome to nx01-tui[/]\n\n"
     "[dim]Type a message and press [bold]Enter[/] to send · [bold]Shift+Enter[/] for newline.\n"
@@ -59,6 +71,7 @@ class ConversationView(VerticalScroll):
         self._active_assistant: AssistantMessage | None = None
         self._active_tools: dict[str, ToolCallBlock] = {}
         self._empty_state: _EmptyState | None = None
+        self._unread_divider: UnreadDivider | None = None
 
     def on_mount(self) -> None:
         self._empty_state = _EmptyState(_EMPTY_HINT)
@@ -79,6 +92,7 @@ class ConversationView(VerticalScroll):
         self._active_thinking = None
         self._active_assistant = None
         self._active_tools = {}
+        self._unread_divider = None
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -105,10 +119,21 @@ class ConversationView(VerticalScroll):
         block.append_chunk(text)
         self.scroll_end(animate=False)
 
-    def end_thinking(self) -> None:
+    def end_thinking(self, auto_collapse: bool = False) -> None:
         if self._active_thinking is not None:
-            self._active_thinking.done()
+            self._active_thinking.done(auto_collapse=auto_collapse)
             self._active_thinking = None
+
+    def insert_unread_divider(self, count: int) -> UnreadDivider:
+        label = f"── {count} new message{'s' if count != 1 else ''} since last visit ──"
+        self._unread_divider = UnreadDivider(f"[bold $warning]{label}[/]")
+        self.mount(self._unread_divider)
+        return self._unread_divider
+
+    def scroll_to_unread_after_refresh(self) -> None:
+        if self._unread_divider is not None:
+            divider = self._unread_divider
+            self.call_after_refresh(lambda: self.scroll_to_widget(divider, animate=False))
 
     def start_tool(self, tool: str, args: str = "", call_id: str = "") -> ToolCallBlock:
         if call_id and call_id in self._active_tools:

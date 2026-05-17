@@ -149,6 +149,13 @@ class SessionsModal(BaseModal):
         except Exception:  # noqa: BLE001
             pass
 
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        opt = event.option
+        if opt and opt.id and "::" in opt.id:
+            flavor, sid = opt.id.split("::", 1)
+            self.dismiss(SessionAction("resume", session_id=sid, flavor=flavor))
+
     def on_input_blurred(self, _event: Input.Blurred) -> None:
         try:
             inp = self.query_one("#filter", Input)

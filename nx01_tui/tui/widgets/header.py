@@ -6,6 +6,8 @@ suffix (auth failed / reconnecting / offline). No status dot.
 
 from __future__ import annotations
 
+import re
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.reactive import reactive
@@ -68,8 +70,19 @@ class AppHeader(Horizontal):
         else:
             domain = f"[$error]{self.domain}[/]  [dim]offline[/]"
         # Model fallback (#29 item 18) — empty → dim italic hint.
-        model = f"[dim]{self.model}[/]" if self.model else "[dim italic]no model[/]"
+        if self.model:
+            model = f"[dim]{self._format_model(self.model)}[/]"
+        else:
+            model = "[dim italic]no model[/]"
         return f"[bold]NX01[/bold]  {sep}  {domain}  {sep}  {model}"
+
+    @staticmethod
+    def _format_model(model: str) -> str:
+        """Compact display: claude-opus-4-5-20250514 → opus-4.5."""
+        name = re.sub(r"^claude-", "", model)
+        name = re.sub(r"-\d{8}$", "", name)
+        name = re.sub(r"(\d+)-(\d+)$", r"\1.\2", name)
+        return (name[:22] + "…") if len(name) > 22 else name
 
     def _hints_text(self) -> str:
         return "[dim]ctrl+p cmd · ctrl+s sessions · ctrl+m memory · ? help[/]"

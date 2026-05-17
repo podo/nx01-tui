@@ -27,7 +27,8 @@ async def test_streams_chunks_while_thinking():
 
 
 @pytest.mark.asyncio
-async def test_done_collapses_and_records_duration():
+async def test_done_stays_expanded_records_duration():
+    # done() no longer auto-collapses — block stays open for inline status.
     app = _Host()
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
@@ -36,6 +37,20 @@ async def test_done_collapses_and_records_duration():
         block.done()
         await pilot.pause(0.05)
         assert block.thinking is False
+        assert block.collapsed is False
+        assert not block.has_class("collapsed")
+        assert block.has_class("done")
+
+
+@pytest.mark.asyncio
+async def test_done_auto_collapse_flag():
+    # auto_collapse=True mirrors old replay behaviour.
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        block.done(auto_collapse=True)
+        await pilot.pause(0.05)
         assert block.collapsed is True
         assert block.has_class("collapsed")
         assert block.has_class("done")
@@ -47,7 +62,7 @@ async def test_toggle_collapsed_swaps_class():
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
         block = app.query_one(ThinkingBlock)
-        block.done()
+        block.done(auto_collapse=True)
         await pilot.pause(0.05)
         assert block.has_class("collapsed")
         block.toggle_collapsed()
@@ -63,9 +78,9 @@ async def test_click_on_header_toggles():
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
         block = app.query_one(ThinkingBlock)
-        block.done()
+        block.done(auto_collapse=True)
         await pilot.pause(0.05)
-        # Collapsed after done()
+        # Collapsed after done(auto_collapse=True)
         assert block.has_class("collapsed")
         # Click on the header — toggles to expanded
         await pilot.click("ThinkingBlock #header")

@@ -96,13 +96,16 @@ class ThinkingBlock(Vertical):
         for line in text.splitlines() or [text]:
             self._log.write(Text(line, style="dim"))
 
-    def done(self) -> None:
-        """Mark thinking complete; reveal chevron, collapse, record duration."""
+    def done(self, auto_collapse: bool = False) -> None:
+        """Mark thinking complete; update header in-place. Block stays expanded
+        so the user sees the content (opencode-style). Pass auto_collapse=True
+        for replay where we want thinking blocks pre-collapsed.
+        """
         self.thinking = False
         self._duration_ms = int((time.monotonic() - self._started_at) * 1000)
         if self._timer is not None:
             self._timer.stop()
-        # Single-indicator handoff: hide spinner, reveal chevron (#29 item 11).
+        # Spinner → chevron handoff.
         try:
             self.query_one(SpinnerWidget).display = False
         except Exception:  # noqa: BLE001
@@ -113,12 +116,13 @@ class ThinkingBlock(Vertical):
             pass
         seconds = self._duration_ms // 1000
         try:
-            self.query_one("#label", Static).update(f"[dim]{seconds}s — thought[/]")
-            self.query_one("#hint", Static).update("[dim]x to toggle[/]")
+            self.query_one("#label", Static).update(f"[$success]✓[/] [dim]Thought — {seconds}s[/]")
+            self.query_one("#hint", Static).update("[dim]click to toggle[/]")
         except Exception:  # noqa: BLE001
             pass
         self.add_class("done")
-        self.set_collapsed(True)
+        if auto_collapse:
+            self.set_collapsed(True)
 
     # ── Collapse control ─────────────────────────────────────────────
 

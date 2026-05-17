@@ -16,8 +16,12 @@ Owns:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
+import time
 from collections import deque
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -66,6 +70,9 @@ from .widgets import (
 )
 
 logger = logging.getLogger(__name__)
+
+_STATE_FILE = Path.home() / ".nx01_tui_state.json"
+_CALL_ID_RE = re.compile(r"^tc-[a-f0-9]{8,}$")
 
 
 class SseMessage(Message):
@@ -212,6 +219,7 @@ class Nx01App(App):
         # Bootstrap each flavor's SlashDropdown with live commands + skills +
         # tools so `/` autocomplete surfaces everything the backend knows.
         await self._bootstrap_slash_dropdowns(flavors)
+        await self._auto_resume_from_saved_state()
 
         self.run_worker(self._sse_loop(), exclusive=True, name="sse", group="net")
 
@@ -275,6 +283,13 @@ class Nx01App(App):
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("slash dropdown: set_sources(%s) failed: %s", fl, exc)
+            # Pre-populate skills sidebar from API data (SSE events may not fire
+            # for skills that were already installed before this session started).
+            state = self._states.get(fl)
+            pane = self._panes.get(fl)
+            if state and pane and skills:
+                state.preload_skills(skills)
+                pane.sync_sidebar(state)
 
     def _focus_active_input(self) -> None:
         flavor = self._active_flavor()
@@ -364,11 +379,21 @@ class Nx01App(App):
         elif isinstance(event, AgentTurnDoneEvent):
             conv.end_thinking()
             conv.end_assistant()
+            self.run_worker(self._refresh_skills_for_flavor(flavor), exclusive=False)
         elif isinstance(event, ToolCallEvent):
             call_id = event.raw.get("call_id", "") or f"{event.tool}-{event.at}"
             tc = state.tool_calls[-1] if state.tool_calls else None
+            # If the backend sent a raw call_id as the tool name, use the
+            # human-readable title instead.
+            if _CALL_ID_RE.match(event.tool) and event.title:
+                parts = event.title.split(": ", 1)
+                tool_display = parts[0].strip()
+                args_display = parts[1].strip() if len(parts) > 1 else event.title
+            else:
+                tool_display = event.tool
+                args_display = event.title or ""
             block = conv.get_tool(call_id) or conv.start_tool(
-                event.tool, args=event.title or "", call_id=call_id
+                tool_display, args=args_display, call_id=call_id
             )
             if tc is not None:
                 block.set_status(tc.status)
@@ -625,7 +650,12 @@ class Nx01App(App):
         self._replay_messages(flavor, rows)
         self.notify(f"Resumed {action.session_id[:8]} — {len(rows)} msgs")
 
-    def _replay_messages(self, flavor: str, rows: list[dict]) -> None:
+    def _replay_messages(
+        self,
+        flavor: str,
+        rows: list[dict],
+        unread_from_row: int | None = None,
+    ) -> None:
         """Render historical DB rows as if they had just streamed live.
 
         Row shape (per podo/nx01#94): {role, content, tool_name, tool_calls,
@@ -636,17 +666,23 @@ class Nx01App(App):
         - role=assistant → AssistantMessage; if tool_calls present, also
                             mount one ToolCallBlock per call (marked DONE)
         - role=tool      → tool output appended into the matching ToolCallBlock
+
+        If unread_from_row is given, an UnreadDivider is inserted before that row.
         """
         from .state import ToolStatus
 
         conv = self._panes[flavor].conversation
-        for row in rows:
+        for i, row in enumerate(rows):
+            if unread_from_row is not None and i == unread_from_row:
+                new_count = len(rows) - unread_from_row
+                conv.insert_unread_divider(new_count)
+
             role = row.get("role", "")
             reasoning = row.get("reasoning") or row.get("reasoning_content") or ""
             if reasoning:
                 t = conv.start_thinking()
                 t.append_chunk(reasoning)
-                conv.end_thinking()
+                conv.end_thinking(auto_collapse=True)
 
             if role == "user":
                 content = row.get("content") or ""
@@ -793,7 +829,99 @@ class Nx01App(App):
             return False
 
     def action_request_quit(self) -> None:
+        self._save_session_state()
         self.exit()
+
+    def _save_session_state(self) -> None:
+        sessions = {
+            flavor: {"session_id": sid, "quit_ts": time.time()}
+            for flavor, sid in self._active_session_id.items()
+            if sid
+        }
+        try:
+            _STATE_FILE.write_text(json.dumps({"version": 1, "sessions": sessions}))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("failed to save session state: %s", exc)
+
+    async def _refresh_skills_for_flavor(self, flavor: str) -> None:
+        try:
+            skills = await self.client.list_skills(flavor)
+        except Exception:  # noqa: BLE001
+            return
+        state = self._states.get(flavor)
+        pane = self._panes.get(flavor)
+        if state and pane and skills:
+            state.preload_skills(skills)
+            pane.sync_sidebar(state)
+
+    async def _auto_resume_from_saved_state(self) -> None:
+        if not _STATE_FILE.exists():
+            return
+        try:
+            data = json.loads(_STATE_FILE.read_text())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("could not load session state file: %s", exc)
+            return
+        if data.get("version") != 1:
+            return
+        for flavor, info in data.get("sessions", {}).items():
+            session_id = info.get("session_id", "")
+            quit_ts = float(info.get("quit_ts", 0))
+            if not session_id or flavor not in self._states:
+                continue
+            try:
+                await self._auto_resume_flavor(flavor, session_id, quit_ts)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("auto-resume %s failed: %s", flavor, exc)
+
+    async def _auto_resume_flavor(
+        self, flavor: str, session_id: str, quit_ts: float
+    ) -> None:
+        try:
+            await self.client.resume_session(session_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auto-resume server call failed for %s: %s", flavor, exc)
+            return
+        try:
+            rows = await self.client.get_session_messages(session_id, flavor=flavor)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auto-resume get_messages failed for %s: %s", flavor, exc)
+            return
+        pane = self._panes.get(flavor)
+        if pane is None:
+            return
+
+        # Find index of first row that arrived after the user quit.
+        unread_from_row: int | None = None
+        if quit_ts > 0:
+            for i, row in enumerate(rows):
+                ts = row.get("timestamp") or row.get("created_at") or 0
+                if isinstance(ts, str):
+                    try:
+                        from datetime import datetime, timezone
+                        ts = datetime.fromisoformat(
+                            ts.replace("Z", "+00:00")
+                        ).replace(tzinfo=timezone.utc).timestamp()
+                    except Exception:  # noqa: BLE001
+                        ts = 0
+                if float(ts) > quit_ts:
+                    unread_from_row = i
+                    break
+
+        self._states[flavor] = FlavorState(name=flavor)
+        pane.conversation.reset_for_replay()
+        self._active_session_id[flavor] = session_id
+        self._replay_messages(flavor, rows, unread_from_row=unread_from_row)
+
+        if unread_from_row is not None and unread_from_row < len(rows):
+            new_count = len(rows) - unread_from_row
+            pane.conversation.scroll_to_unread_after_refresh()
+            self.notify(
+                f"Resumed — {new_count} new message{'s' if new_count != 1 else ''}",
+                timeout=4,
+            )
+        else:
+            pane.conversation.scroll_end(animate=False)
 
     def action_stop_generation(self) -> None:
         if self._current_correlation_id:

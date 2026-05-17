@@ -135,6 +135,14 @@ class FlavorState:
             self.skills_loaded.append({"name": skill_name, "size": skill_size})
         self.messages.append({"type": "skill_block", "name": skill_name, "size": skill_size})
 
+    def preload_skills(self, skills: list[dict[str, Any]]) -> None:
+        """Populate skills_loaded from API data without adding a conversation message."""
+        for skill in skills:
+            name = skill.get("name", "")
+            size = int(skill.get("size") or 0)
+            if name and not any(s["name"] == name for s in self.skills_loaded):
+                self.skills_loaded.append({"name": name, "size": size})
+
     def seal_turn(self, stop_reason: str = "", token_usage: dict[str, int] | None = None) -> None:
         self.seal_thinking()
         self.last_turn_tools = list(self.tool_calls)
