@@ -1,4 +1,4 @@
-"""ChatInput — multi-line TextArea with ctrl+j submit, auto-expand height."""
+"""ChatInput — multi-line TextArea: Enter sends, Shift/Alt+Enter newline."""
 
 from __future__ import annotations
 
@@ -8,10 +8,12 @@ from textual.widgets import TextArea
 
 
 class ChatInput(TextArea):
-    """TextArea subclass that auto-expands and emits Submitted on ctrl+j.
+    """TextArea subclass that auto-expands and submits on Enter.
 
-    Shift+Enter inserts a newline (TextArea default behaviour on
-    terminals supporting the Kitty keyboard protocol).
+    - `enter`         → submit (chat-app convention)
+    - `shift+enter`   → insert newline (Kitty/WezTerm/Ghostty/iTerm2 w/ modifier reporting)
+    - `alt+enter`     → insert newline (fallback for Terminal.app where shift+enter == enter)
+    - `ctrl+j`        → submit (universal terminal fallback)
     """
 
     DEFAULT_CSS = """
@@ -29,6 +31,9 @@ class ChatInput(TextArea):
     """
 
     BINDINGS = [
+        Binding("enter", "submit", "Send", show=False, priority=True),
+        Binding("shift+enter", "newline", "Newline", show=False, priority=True),
+        Binding("alt+enter", "newline", "Newline", show=False, priority=True),
         Binding("ctrl+j", "submit", "Send", show=False),
     ]
 
@@ -53,6 +58,12 @@ class ChatInput(TextArea):
             return
         self.post_message(self.Submitted(text))
         self.clear()
+
+    def action_newline(self) -> None:
+        # Insert a literal newline at the cursor — used by shift+enter
+        # and alt+enter so multi-line composition still works after we
+        # took the bare `enter` for submit.
+        self.insert("\n")
 
     def _on_text_area_changed(self, _event: TextArea.Changed) -> None:
         self.post_message(self.TextChanged(self.text))
