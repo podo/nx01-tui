@@ -75,7 +75,8 @@ class Nx01Client:
         text: str,
         session_id: str | None = None,
     ) -> dict[str, Any]:
-        body = {"flavor": flavor, "text": text}
+        # Server contract: MessageRequest expects target_flavor + message.
+        body: dict[str, Any] = {"target_flavor": flavor, "message": text}
         if session_id:
             body["session_id"] = session_id
         r = await self._client.post("/message", json=body)

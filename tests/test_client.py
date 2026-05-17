@@ -32,6 +32,11 @@ async def test_send_message_includes_bearer_token(client: Nx01Client):
     )
     await client.send_message("assistant", "hello")
     assert route.calls[0].request.headers["authorization"] == "Bearer secret"
+    # Server contract: target_flavor + message (not flavor / text).
+    import json as _json
+    body = _json.loads(route.calls[0].request.content)
+    assert body["target_flavor"] == "assistant"
+    assert body["message"] == "hello"
     await client.close()
 
 
