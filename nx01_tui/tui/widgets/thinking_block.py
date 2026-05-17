@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
@@ -36,7 +37,7 @@ class ThinkingBlock(Vertical):
     ThinkingBlock #header {
         height: 1;
     }
-    ThinkingBlock #header > ExpandChevron { width: 2; }
+    ThinkingBlock #header > ExpandChevron { width: 3; }
     ThinkingBlock #header > Static#label    { width: 1fr; color: $warning; }
     ThinkingBlock #header > Static#hint     { width: auto; color: $text-muted; }
     ThinkingBlock #header > SpinnerWidget   { width: 2; color: $warning; }
@@ -61,7 +62,9 @@ class ThinkingBlock(Vertical):
         self._log: RichLog | None = None
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="header"):
+        # Header is its own clickable subtree; the RichLog body below stays
+        # click-inert so text selection inside doesn't accidentally collapse.
+        with Horizontal(id="header", classes="thinking-header"):
             yield ExpandChevron(expanded=True)
             yield SpinnerWidget("dots")
             yield Static("[bold]Thinking…[/]  [dim]0s[/]", id="label")
@@ -128,6 +131,12 @@ class ThinkingBlock(Vertical):
 
     # ── Keyboard / mouse ─────────────────────────────────────────────
 
-    def on_click(self) -> None:
-        # Clicking the header toggles
-        self.toggle_collapsed()
+    def on_click(self, event: events.Click) -> None:
+        # Only toggle when the click originates in the #header subtree, so
+        # text selection inside the RichLog body doesn't accidentally collapse.
+        node = event.widget
+        while node is not None and node is not self:
+            if getattr(node, "id", None) == "header":
+                self.toggle_collapsed()
+                return
+            node = node.parent

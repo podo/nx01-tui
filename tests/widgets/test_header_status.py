@@ -35,6 +35,29 @@ async def test_header_reflects_connection_state():
 
 
 @pytest.mark.asyncio
+async def test_header_has_no_status_dot():
+    """Header brand text must not contain a status glyph — state is conveyed
+    by text color + suffix only."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        hdr = app.query_one(AppHeader)
+        for connected, reconnecting, auth_failed in (
+            (True, False, False),
+            (False, True, False),
+            (False, False, True),
+            (False, False, False),
+        ):
+            hdr.connected = connected
+            hdr.reconnecting = reconnecting
+            hdr.auth_failed = auth_failed
+            await pilot.pause(0.05)
+            text = hdr._brand_text()
+            for glyph in ("⬤", "●", "•", "⠋"):
+                assert glyph not in text, f"unexpected status glyph {glyph!r} found in {text!r}"
+
+
+@pytest.mark.asyncio
 async def test_status_bar_state_transitions():
     app = _Host()
     async with app.run_test() as pilot:

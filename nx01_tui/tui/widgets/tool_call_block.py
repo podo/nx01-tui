@@ -10,6 +10,7 @@ import difflib
 import time
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
@@ -41,7 +42,7 @@ class ToolCallBlock(Vertical):
     ToolCallBlock.error   { border: round $error; }
 
     ToolCallBlock #header { height: 1; }
-    ToolCallBlock #header > ExpandChevron { width: 2; }
+    ToolCallBlock #header > ExpandChevron { width: 3; }
     ToolCallBlock #header > StarSpinner    { width: 2; }
     ToolCallBlock #header > Static#icon    { width: 2; content-align: center middle; }
     ToolCallBlock #header > Static#name    { width: auto; }
@@ -187,5 +188,11 @@ class ToolCallBlock(Vertical):
     def toggle_collapsed(self) -> None:
         self.set_collapsed(not self.collapsed)
 
-    def on_click(self) -> None:
-        self.toggle_collapsed()
+    def on_click(self, event: events.Click) -> None:
+        # Header subtree only — keep RichLog body click-inert for text selection.
+        node = event.widget
+        while node is not None and node is not self:
+            if getattr(node, "id", None) == "header":
+                self.toggle_collapsed()
+                return
+            node = node.parent

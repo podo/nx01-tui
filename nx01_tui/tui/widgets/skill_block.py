@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
@@ -21,7 +22,7 @@ class SkillBlock(Vertical):
     }
     SkillBlock.done { opacity: 0.7; }
     SkillBlock #header { height: 1; }
-    SkillBlock #header > ExpandChevron     { width: 2; }
+    SkillBlock #header > ExpandChevron     { width: 3; }
     SkillBlock #header > Static#icon       { width: 2; color: $accent; }
     SkillBlock #header > Static#label      { width: 1fr; color: $accent; }
     SkillBlock #header > Static#size       { width: auto; color: $text-muted; }
@@ -79,5 +80,11 @@ class SkillBlock(Vertical):
     def toggle_collapsed(self) -> None:
         self.set_collapsed(not self.collapsed)
 
-    def on_click(self) -> None:
-        self.toggle_collapsed()
+    def on_click(self, event: events.Click) -> None:
+        # Header subtree only.
+        node = event.widget
+        while node is not None and node is not self:
+            if getattr(node, "id", None) == "header":
+                self.toggle_collapsed()
+                return
+            node = node.parent

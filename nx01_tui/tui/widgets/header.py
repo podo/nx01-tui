@@ -1,4 +1,8 @@
-"""AppHeader — top docked status bar: NX01 ⬤ domain · model · shortcuts."""
+"""AppHeader — top docked status bar: NX01 · domain · model · shortcuts.
+
+Connection state is conveyed by the domain's text color + a parenthetical
+suffix (auth failed / reconnecting / offline). No status dot.
+"""
 
 from __future__ import annotations
 
@@ -50,19 +54,16 @@ class AppHeader(Horizontal):
         self._refresh_brand()
 
     def _brand_text(self) -> str:
+        # No status glyph — state is communicated by the domain's color + suffix.
         if self.auth_failed:
-            dot = "[$error]⬤[/]"
             domain = f"[$error]{self.domain} (auth failed — check API key)[/]"
         elif self.reconnecting:
-            dot = "[$warning]⠋[/]"
             domain = f"[$warning]{self.domain} (reconnecting)[/]"
         elif self.connected:
-            dot = "[$success]⬤[/]"
             domain = f"[cyan]{self.domain}[/]"
         else:
-            dot = "[$error]⬤[/]"
             domain = f"[$error]{self.domain} (offline)[/]"
-        return f"[bold]NX01[/bold]  {dot}  {domain}  [dim]·[/]  [dim]{self.model}[/]"
+        return f"[bold]NX01[/bold]  {domain}  [dim]·[/]  [dim]{self.model}[/]"
 
     def _hints_text(self) -> str:
         return "[dim]ctrl+p cmd · ctrl+s sessions · ctrl+m memory · ? help[/]"

@@ -19,7 +19,7 @@ async def test_chevron_starts_collapsed_arrow():
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
         ch = app.query_one(ExpandChevron)
-        assert str(ch.render()) == "▸"
+        assert str(ch.render()) == "▶"
         assert ch.expanded is False
 
 
@@ -31,8 +31,8 @@ async def test_chevron_toggle_flips_arrow():
         ch = app.query_one(ExpandChevron)
         ch.toggle()
         await pilot.pause(0.05)
-        assert str(ch.render()) == "▾"
+        assert str(ch.render()) == "▼"
         assert ch.expanded is True
         ch.toggle()
         await pilot.pause(0.05)
-        assert str(ch.render()) == "▸"
+        assert str(ch.render()) == "▶"
