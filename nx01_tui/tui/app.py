@@ -207,7 +207,21 @@ class Nx01App(App):
         self.run_worker(self._sse_loop(), exclusive=True, name="sse", group="net")
 
     async def _bootstrap_slash_dropdowns(self, flavors: list[str]) -> None:
-        """Fetch commands once + per-flavor skills/tools; feed each dropdown."""
+        """Fetch commands once + per-flavor skills/tools; feed each dropdown.
+
+        FlavorPane mounts are queued by `tabs.add_pane` (sync) but the actual
+        DOM insertion happens on the next refresh cycle, so we yield once to
+        let those mounts complete before querying the dropdowns.
+        """
+        # FlavorPane mounts queued by `tabs.add_pane` settle after a refresh.
+        # Wait briefly so #slash-{flavor} is queryable.
+        for _ in range(20):
+            await asyncio.sleep(0.05)
+            try:
+                if all(self.query_one(f"#slash-{fl}", SlashDropdown) for fl in flavors):
+                    break
+            except Exception:  # noqa: BLE001
+                continue
         try:
             commands = await self.client.list_commands()
         except Exception as exc:  # noqa: BLE001
@@ -815,7 +829,12 @@ class Nx01App(App):
     def on_resize(self, event) -> None:  # type: ignore[no-untyped-def]
         width = event.size.width
         for pane in self._panes.values():
-            pane.sidebar.apply_terminal_width(width)
+            # Sidebar may not be mounted yet on the very first resize event
+            # (fires before FlavorPane.compose finishes) — skip gracefully.
+            try:
+                pane.sidebar.apply_terminal_width(width)
+            except Exception:  # noqa: BLE001
+                continue
 
 
 # Back-compat alias for CLI: existing entry point used `Nx01TuiApp`.

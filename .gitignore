@@ -10,3 +10,6 @@ build/
 .ruff_cache/
 snapshot_report.html
 .DS_Store
+# Visual smoke artifacts — regenerated locally by scripts/v1_visual_smoke.py.
+artifacts/v1-smoke/*.svg
+artifacts/v1-smoke/REPORT.md
