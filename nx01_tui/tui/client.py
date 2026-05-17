@@ -118,19 +118,25 @@ class Nx01Client:
         r = await self._client.delete(f"/sessions/{session_id}")
         r.raise_for_status()
 
-    # ── Memory (depends on backend gap #16) ──────────────────────────
+    # ── Memory (per-flavor on the backend) ───────────────────────────
 
-    async def read_memory(self, store: str = "agent") -> list[str]:
+    async def read_memory(self, store: str = "agent", flavor: str | None = None) -> list[str]:
         try:
-            r = await self._client.get(f"/memory/{store}")
+            params = {"flavor": flavor} if flavor else None
+            r = await self._client.get(f"/memory/{store}", params=params)
             r.raise_for_status()
             data = r.json()
             return data.get("entries", []) if isinstance(data, dict) else []
         except httpx.HTTPError:
             return []
 
-    async def write_memory(self, store: str, action: str, **kwargs: Any) -> None:
-        await self._client.post(f"/memory/{store}", json={"action": action, **kwargs})
+    async def write_memory(
+        self, store: str, action: str, flavor: str | None = None, **kwargs: Any
+    ) -> None:
+        params = {"flavor": flavor} if flavor else None
+        await self._client.post(
+            f"/memory/{store}", params=params, json={"action": action, **kwargs}
+        )
 
     # ── Skills ───────────────────────────────────────────────────────
 

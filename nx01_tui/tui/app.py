@@ -461,9 +461,10 @@ class Nx01App(App):
         self.run_worker(self._open_memory(), exclusive=False)
 
     async def _open_memory(self) -> None:
+        flavor = self._active_flavor() or "assistant"
         try:
-            agent = await self.client.read_memory("agent")
-            user = await self.client.read_memory("user")
+            agent = await self.client.read_memory("agent", flavor=flavor)
+            user = await self.client.read_memory("user", flavor=flavor)
         except Exception as exc:  # noqa: BLE001
             self.notify(f"Memory unavailable: {exc}", severity="warning")
             agent, user = [], []
