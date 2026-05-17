@@ -80,19 +80,69 @@ class SlashDropdown(OptionList):
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self.candidates = (
-            list(candidates) if candidates is not None else list(DEFAULT_SLASH_COMMANDS)
-        )
+        # Each candidate is (insertion_string, description, category) where
+        # category is one of "cmd" / "skill" / "tool". Two-tuples coming in
+        # via the legacy DEFAULT_SLASH_COMMANDS list are normalised to
+        # category="cmd".
+        seed = candidates if candidates is not None else DEFAULT_SLASH_COMMANDS
+        self.candidates: list[tuple[str, str, str]] = [
+            (item[0], item[1], item[2] if len(item) > 2 else "cmd")  # type: ignore[misc]
+            for item in seed
+        ]
         self._populate("")
+
+    def set_sources(
+        self,
+        commands: list[dict] | None = None,
+        skills: list[dict] | None = None,
+        tools: list[dict] | None = None,
+    ) -> None:
+        """Bootstrap the dropdown from live backend data.
+
+        Each entry inserts a categorised string at completion (D8 in
+        podo/nx01-tui#26):
+
+            commands   →  /<name>
+            skills     →  /skill <name>
+            tools      →  /tool <name>
+        """
+        merged: list[tuple[str, str, str]] = []
+        for cmd in commands or []:
+            name = cmd.get("name") or ""
+            if not name:
+                continue
+            insertion = name if name.startswith("/") else f"/{name}"
+            merged.append((insertion, cmd.get("description", ""), "cmd"))
+        for sk in skills or []:
+            name = sk.get("name") or ""
+            if not name:
+                continue
+            loaded = "loaded" if sk.get("loaded") else "available"
+            merged.append((f"/skill {name}", loaded, "skill"))
+        # /tools may return {tools: [...]} or a bare list of dicts.
+        tool_list = tools or []
+        for t in tool_list:
+            name = t.get("name") if isinstance(t, dict) else None
+            if not name:
+                continue
+            desc = t.get("description", "") if isinstance(t, dict) else ""
+            merged.append((f"/tool {name}", desc, "tool"))
+        self.candidates = merged or list(self.candidates)
+        self._populate("")
+
+    _CATEGORY_LABEL = {"cmd": "cmd", "skill": "skill", "tool": "tool"}
 
     def _populate(self, query: str) -> None:
         self.clear_options()
         q = query.lower().lstrip("/")
-        for cmd, desc in self.candidates:
-            hay = (cmd + " " + desc).lower()
+        for entry in self.candidates:
+            insertion, desc, category = entry
+            hay = (insertion + " " + desc).lower()
             if q and q not in hay:
                 continue
-            self.add_option(Option(f"[bold]{cmd}[/]  [dim]{desc}[/]", id=cmd))
+            cat_label = self._CATEGORY_LABEL.get(category, category)
+            label = f"[bold]{insertion}[/]  [dim]{desc}[/]  [$accent]{cat_label}[/]"
+            self.add_option(Option(label, id=insertion))
 
     def update_for_text(self, text: str) -> None:
         """Show / hide based on prefix; refresh suggestions."""

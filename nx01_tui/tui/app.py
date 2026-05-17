@@ -185,7 +185,41 @@ class Nx01App(App):
         # Auto-focus the active flavor's input so the user can type immediately.
         self._focus_active_input()
 
+        # Bootstrap each flavor's SlashDropdown with live commands + skills +
+        # tools so `/` autocomplete surfaces everything the backend knows.
+        await self._bootstrap_slash_dropdowns(flavors)
+
         self.run_worker(self._sse_loop(), exclusive=True, name="sse", group="net")
+
+    async def _bootstrap_slash_dropdowns(self, flavors: list[str]) -> None:
+        """Fetch commands once + per-flavor skills/tools; feed each dropdown."""
+        try:
+            commands = await self.client.list_commands()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("slash dropdown: list_commands failed: %s", exc)
+            commands = []
+        for fl in flavors:
+            try:
+                skills = await self.client.list_skills(fl)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("slash dropdown: list_skills(%s) failed: %s", fl, exc)
+                skills = []
+            try:
+                tools_resp = await self.client.get_tools(fl)
+                tools = (
+                    tools_resp.get("tools", [])
+                    if isinstance(tools_resp, dict)
+                    else (tools_resp or [])
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("slash dropdown: get_tools(%s) failed: %s", fl, exc)
+                tools = []
+            try:
+                self.query_one(f"#slash-{fl}", SlashDropdown).set_sources(
+                    commands=commands, skills=skills, tools=tools
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("slash dropdown: set_sources(%s) failed: %s", fl, exc)
 
     def _focus_active_input(self) -> None:
         flavor = self._active_flavor()

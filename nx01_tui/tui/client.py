@@ -67,6 +67,17 @@ class Nx01Client:
         r.raise_for_status()
         return r.json()
 
+    async def list_commands(self) -> list[dict[str, Any]]:
+        """Slash commands from the backend registry."""
+        r = await self._client.get("/commands")
+        r.raise_for_status()
+        body = r.json()
+        # /commands may return either a bare list or {commands: [...]} —
+        # tolerate both shapes.
+        if isinstance(body, list):
+            return body
+        return body.get("commands", [])
+
     # ── Messaging ────────────────────────────────────────────────────
 
     async def send_message(

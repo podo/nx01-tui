@@ -55,3 +55,56 @@ async def test_no_matches_hides_dropdown():
         dd = app.query_one(SlashDropdown)
         dd.update_for_text("/xyzdoesnotexist")
         assert not dd.has_class("visible")
+
+
+@pytest.mark.asyncio
+async def test_set_sources_merges_commands_skills_tools():
+    """Insertion strings are categorised per D8 (podo/nx01-tui#26)."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        dd = app.query_one(SlashDropdown)
+        dd.set_sources(
+            commands=[{"name": "/help", "description": "show help"}],
+            skills=[{"name": "ci-setup", "loaded": False}],
+            tools=[{"name": "bash", "description": "shell"}],
+        )
+        dd.update_for_text("/")
+        await pilot.pause(0.05)
+        # Three entries, one per category.
+        assert dd.option_count == 3
+        ids = sorted(dd.get_option_at_index(i).id for i in range(3))
+        assert ids == ["/help", "/skill ci-setup", "/tool bash"]
+
+
+@pytest.mark.asyncio
+async def test_set_sources_handles_empty_inputs():
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        dd = app.query_one(SlashDropdown)
+        # All three empty — should keep defaults (don't blank the list).
+        before = dd.option_count
+        dd.set_sources(commands=[], skills=[], tools=[])
+        dd.update_for_text("/")
+        await pilot.pause(0.05)
+        # Falls back to seeded defaults if everything is empty.
+        assert dd.option_count == before
+
+
+@pytest.mark.asyncio
+async def test_set_sources_fuzzy_filter_across_categories():
+    """`/load` should match a skill insertion `/skill ci-setup` only via name,
+    while `/bash` matches the tool entry."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        dd = app.query_one(SlashDropdown)
+        dd.set_sources(
+            commands=[{"name": "/help", "description": "show help"}],
+            skills=[{"name": "ci-setup", "loaded": False}],
+            tools=[{"name": "bash", "description": "shell"}],
+        )
+        dd.update_for_text("/bash")
+        assert dd.option_count == 1
+        assert dd.get_option_at_index(0).id == "/tool bash"
