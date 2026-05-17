@@ -15,7 +15,13 @@ class ConfirmModal(BaseModal):
 
     DEFAULT_CSS = """
     ConfirmModal .dialog { width: 50; }
+    ConfirmModal.dangerous .dialog { border: round $error; }
     ConfirmModal Button { margin: 0 1; }
+    ConfirmModal #irreversible {
+        color: $error;
+        text-style: bold;
+        margin: 1 0;
+    }
     """
 
     BINDINGS = [
@@ -27,6 +33,8 @@ class ConfirmModal(BaseModal):
         super().__init__(**kwargs)
         self.prompt = prompt
         self.dangerous = dangerous
+        if dangerous:
+            self.add_class("dangerous")
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
@@ -35,11 +43,23 @@ class ConfirmModal(BaseModal):
                 classes="dialog-title",
             )
             yield Static(self.prompt)
+            if self.dangerous:
+                yield Static("This cannot be undone.", id="irreversible")
             with Horizontal():
-                yield Button(
-                    "Yes (y)", id="yes", variant="success" if not self.dangerous else "error"
-                )
-                yield Button("No (n)", id="no")
+                # Dangerous → No first + focused; benign → Yes first.
+                if self.dangerous:
+                    yield Button("No (n)", id="no", variant="primary")
+                    yield Button("Yes (y)", id="yes", variant="error")
+                else:
+                    yield Button("Yes (y)", id="yes", variant="success")
+                    yield Button("No (n)", id="no")
+
+    def on_mount(self) -> None:
+        try:
+            target = "#no" if self.dangerous else "#yes"
+            self.query_one(target, Button).focus()
+        except Exception:  # noqa: BLE001
+            pass
 
     def action_confirm(self) -> None:
         self.dismiss(True)

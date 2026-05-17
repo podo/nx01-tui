@@ -36,7 +36,8 @@ async def test_update_from_renders_all_sections():
 
 
 @pytest.mark.asyncio
-async def test_responsive_hides_below_100_cols():
+async def test_responsive_hides_below_130_cols():
+    """#29 item 3 — sidebar hides entirely below 130 cols (icon-strip removed)."""
     app = _Host()
     async with app.run_test() as pilot:
         await pilot.pause(0.05)
@@ -46,12 +47,11 @@ async def test_responsive_hides_below_100_cols():
         assert sb.has_class("hidden")
 
         sb.apply_terminal_width(120)
-        assert not sb.has_class("hidden")
-        assert sb.has_class("icon-strip")
+        assert sb.has_class("hidden")
+        assert not sb.has_class("icon-strip")
 
         sb.apply_terminal_width(160)
         assert not sb.has_class("hidden")
-        assert not sb.has_class("icon-strip")
 
 
 @pytest.mark.asyncio
@@ -74,6 +74,6 @@ async def test_responsive_width_scales_with_terminal():
         sb.apply_terminal_width(240)
         assert int(sb.styles.width.value) == 50
 
-        # 110 // 4 = 27 — but we hit icon-strip mode before that, no width set.
+        # Below 130 — hidden entirely.
         sb.apply_terminal_width(110)
-        assert sb.has_class("icon-strip")
+        assert sb.has_class("hidden")

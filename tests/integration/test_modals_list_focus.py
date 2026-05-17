@@ -1,9 +1,7 @@
-"""Modal list-focus + hidden-filter tests (W4 + W6, podo/nx01-tui#26 D1).
+"""Modal list-focus tests (W4 + W6, podo/nx01-tui#26 D1 + #29 item 14).
 
-CommandModal and SessionsModal must:
-  - auto-focus the OptionList on mount (not the filter Input)
-  - keep the filter Input hidden (display: none) until `/` is pressed
-  - allow `↑↓` + Enter to navigate / select immediately
+CommandModal: list-focused, NO filter input at all (#29 item 14 removed it).
+SessionsModal: list-focused, filter hidden behind `/`.
 """
 
 from __future__ import annotations
@@ -41,31 +39,34 @@ class _SessionsHost(App):
 
 
 @pytest.mark.asyncio
-async def test_command_modal_focuses_list_not_filter():
+async def test_command_modal_focuses_list_no_filter():
+    """#29 item 14 — filter Input removed entirely; list has focus on open."""
     app = _CmdHost()
     async with app.run_test() as pilot:
         await pilot.pause(0.2)
         modal = app.screen
         assert isinstance(modal, CommandModal)
         lst = modal.query_one("#cmd-list", OptionList)
-        inp = modal.query_one("#filter", Input)
-        # List has focus; filter is hidden.
         assert lst.has_focus
-        assert not inp.has_focus
-        assert not inp.has_class("visible")
+        # No filter Input should exist in the DOM.
+        assert not modal.query(Input)
 
 
 @pytest.mark.asyncio
-async def test_command_modal_slash_reveals_filter():
+async def test_command_modal_has_no_v2_rows():
+    """#29 item 14 — V2-marked entries are hidden."""
     app = _CmdHost()
     async with app.run_test() as pilot:
         await pilot.pause(0.2)
         modal = app.screen
-        await pilot.press("slash")
-        await pilot.pause(0.1)
-        inp = modal.query_one("#filter", Input)
-        assert inp.has_class("visible")
-        assert inp.has_focus
+        lst = modal.query_one("#cmd-list", OptionList)
+        ids = [
+            lst.get_option_at_index(i).id
+            for i in range(lst.option_count)
+            if lst.get_option_at_index(i).id
+        ]
+        # No v2_* action ids should be visible.
+        assert not any(opt and opt.startswith("v2_") for opt in ids)
 
 
 @pytest.mark.asyncio

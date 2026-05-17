@@ -57,6 +57,7 @@ class ChatInput(TextArea):
             self.text = text
 
     def __init__(self, **kwargs: object) -> None:
+        kwargs.setdefault("placeholder", "Type to chat · /help · @file")
         super().__init__(language=None, show_line_numbers=False, **kwargs)
 
     class TextChanged(Message):

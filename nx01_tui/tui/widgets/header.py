@@ -28,7 +28,9 @@ class AppHeader(Horizontal):
     """
 
     domain: reactive[str] = reactive("disconnected")
-    model: reactive[str] = reactive("—")
+    # Empty string means "no model yet"; the renderer shows a dim hint
+    # instead of an em-dash (#29 item 18).
+    model: reactive[str] = reactive("")
     connected: reactive[bool] = reactive(False)
     reconnecting: reactive[bool] = reactive(False)
     auth_failed: reactive[bool] = reactive(False)
@@ -54,16 +56,20 @@ class AppHeader(Horizontal):
         self._refresh_brand()
 
     def _brand_text(self) -> str:
-        # No status glyph — state is communicated by the domain's color + suffix.
+        # Color-only state signalling (#29 item 19) — long detail moves to a
+        # toast so the header stays tight even when something goes wrong.
+        sep = "[dim]┃[/]"
         if self.auth_failed:
-            domain = f"[$error]{self.domain} (auth failed — check API key)[/]"
+            domain = f"[$error]{self.domain}[/]  [bold $error]AUTH[/]"
         elif self.reconnecting:
-            domain = f"[$warning]{self.domain} (reconnecting)[/]"
+            domain = f"[$warning]{self.domain}[/]  [dim]reconnecting[/]"
         elif self.connected:
             domain = f"[cyan]{self.domain}[/]"
         else:
-            domain = f"[$error]{self.domain} (offline)[/]"
-        return f"[bold]NX01[/bold]  {domain}  [dim]·[/]  [dim]{self.model}[/]"
+            domain = f"[$error]{self.domain}[/]  [dim]offline[/]"
+        # Model fallback (#29 item 18) — empty → dim italic hint.
+        model = f"[dim]{self.model}[/]" if self.model else "[dim italic]no model[/]"
+        return f"[bold]NX01[/bold]  {sep}  {domain}  {sep}  {model}"
 
     def _hints_text(self) -> str:
         return "[dim]ctrl+p cmd · ctrl+s sessions · ctrl+m memory · ? help[/]"

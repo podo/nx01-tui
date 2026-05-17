@@ -104,7 +104,7 @@ class FilePickerDropdown(OptionList):
         for path in self._ensure_scanned():
             if q and q not in path.lower():
                 continue
-            self.add_option(Option(f"📄  {path}", id=path))
+            self.add_option(Option(f"[$accent]▣[/]  {path}", id=path))
 
     def action_dismiss(self) -> None:
         self.remove_class("visible")

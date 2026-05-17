@@ -42,13 +42,13 @@ class SkillBlock(Vertical):
         super().__init__(**kwargs)
         self.skill_name = skill_name
         self.skill_size = skill_size
-        self.content = content or "_(skill content not yet streamed)_"
+        self.content = content or "_Loading skill manifest…_"
         self.add_class("collapsed")
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="header"):
             yield ExpandChevron(expanded=False)
-            yield Static("⚡", id="icon")
+            yield Static("◆", id="icon")
             yield Static(f"[bold]skill:{self.skill_name}[/]  [dim]loaded[/]", id="label")
             yield Static(self._size_text(), id="size")
         yield Markdown(self.content)

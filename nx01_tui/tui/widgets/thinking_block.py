@@ -3,8 +3,7 @@
 Behaviour:
   - Created when first AgentThinkingEvent arrives.
   - Streams chunks into a RichLog while .thinking is True.
-  - On done(), records duration, collapses, and updates the header to
-    `💭 {duration}s ▸`.
+  - On done(), records duration, collapses, and updates the header.
 """
 
 from __future__ import annotations
@@ -62,13 +61,16 @@ class ThinkingBlock(Vertical):
         self._log: RichLog | None = None
 
     def compose(self) -> ComposeResult:
-        # Header is its own clickable subtree; the RichLog body below stays
-        # click-inert so text selection inside doesn't accidentally collapse.
+        # While streaming, only the spinner is visible (single indicator —
+        # #29 item 11). The chevron appears on done() when the block becomes
+        # collapsible.
         with Horizontal(id="header", classes="thinking-header"):
-            yield ExpandChevron(expanded=True)
+            chev = ExpandChevron(expanded=True)
+            chev.display = False  # hidden until done()
+            yield chev
             yield SpinnerWidget("dots")
             yield Static("[bold]Thinking…[/]  [dim]0s[/]", id="label")
-            yield Static("[dim]x to toggle[/]", id="hint")
+            yield Static("", id="hint")
         log = RichLog(highlight=False, markup=False, wrap=True)
         log.can_focus = False
         self._log = log
@@ -95,19 +97,24 @@ class ThinkingBlock(Vertical):
             self._log.write(Text(line, style="dim"))
 
     def done(self) -> None:
-        """Mark thinking complete; collapse and finalise duration."""
+        """Mark thinking complete; reveal chevron, collapse, record duration."""
         self.thinking = False
         self._duration_ms = int((time.monotonic() - self._started_at) * 1000)
         if self._timer is not None:
             self._timer.stop()
+        # Single-indicator handoff: hide spinner, reveal chevron (#29 item 11).
         try:
-            spinner = self.query_one(SpinnerWidget)
-            spinner.display = False
+            self.query_one(SpinnerWidget).display = False
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.query_one(ExpandChevron).display = True
         except Exception:  # noqa: BLE001
             pass
         seconds = self._duration_ms // 1000
         try:
-            self.query_one("#label", Static).update(f"[dim]💭 {seconds}s — thought[/]")
+            self.query_one("#label", Static).update(f"[dim]{seconds}s — thought[/]")
+            self.query_one("#hint", Static).update("[dim]x to toggle[/]")
         except Exception:  # noqa: BLE001
             pass
         self.add_class("done")
@@ -116,6 +123,9 @@ class ThinkingBlock(Vertical):
     # ── Collapse control ─────────────────────────────────────────────
 
     def set_collapsed(self, collapsed: bool) -> None:
+        # While streaming, the block is always expanded (#29 item 11).
+        if collapsed and self.thinking:
+            return
         self.collapsed = collapsed
         if collapsed:
             self.add_class("collapsed")

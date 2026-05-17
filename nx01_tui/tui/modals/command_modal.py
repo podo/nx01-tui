@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
-from textual.widgets import Input, OptionList, Static
+from textual.widgets import OptionList, Static
 from textual.widgets.option_list import Option
 
 from .base import BaseModal
@@ -86,21 +86,19 @@ def default_commands() -> list[CommandEntry]:
 class CommandModal(BaseModal):
     """ModalScreen[str] — dismisses with selected action id or empty string.
 
-    List-focused by default (D1 in podo/nx01-tui#26). Type `/` inside the
-    modal to reveal a filter input row; press Escape to hide it again.
+    List-focused by default. The filter Input has been removed entirely
+    in #29 item 14 — the action list is short enough to scan; type-ahead
+    on OptionList still works for prefix-match. V2-marked entries are
+    hidden as well to keep the visible list actionable.
     """
 
     DEFAULT_CSS = """
     CommandModal .dialog { width: 70; height: 90%; }
-    CommandModal Input { margin-bottom: 1; display: none; }
-    CommandModal Input.visible { display: block; }
     CommandModal OptionList { height: 1fr; }
     """
 
     BINDINGS = [
         Binding("enter", "select", "Select", show=False),
-        # `/` reveals the (otherwise hidden) filter input.
-        Binding("slash", "reveal_filter", show=False),
     ]
 
     def __init__(self, commands: list[CommandEntry] | None = None, **kwargs: object) -> None:
@@ -111,55 +109,40 @@ class CommandModal(BaseModal):
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
             yield Static("[bold]Commands[/]", classes="dialog-title")
-            yield Input(placeholder="Filter…", id="filter")
-            yield OptionList(*self._render_options(""), id="cmd-list")
+            yield OptionList(*self._render_options(), id="cmd-list")
             yield Static(
-                "[dim]↑↓ navigate · Enter run · / filter · ESC close[/]",
+                "[dim]↑↓ navigate · Enter run · ESC close[/]",
                 classes="dialog-hint",
             )
 
     def on_mount(self) -> None:
-        # Auto-focus the list so arrows + Enter work immediately. The filter
-        # Input stays hidden until the user presses `/`.
         try:
             self.query_one("#cmd-list", OptionList).focus()
         except Exception:  # noqa: BLE001
             pass
 
-    def _render_options(self, query: str) -> list[Option]:
-        q = query.lower().strip()
+    def _render_options(self) -> list[Option]:
         opts: list[Option] = []
         self._visible_actions = []
         last_group = None
         for cmd in self.all_commands:
-            haystack = f"{cmd.label} {cmd.description} {cmd.keybind}".lower()
-            if q and q not in haystack:
+            # Hide V2-marked rows entirely (#29 item 14).
+            if not cmd.enabled:
                 continue
             if cmd.group and cmd.group != last_group:
                 opts.append(Option(f"[dim]── {cmd.group} ──[/]", disabled=True))
                 last_group = cmd.group
             kb = f"  [dim]{cmd.keybind}[/]" if cmd.keybind else ""
-            disabled_tag = "  [dim](v2)[/]" if not cmd.enabled else ""
             opts.append(
                 Option(
-                    f"{cmd.label}  [dim]{cmd.description}[/]{kb}{disabled_tag}",
+                    f"{cmd.label}  [dim]{cmd.description}[/]{kb}",
                     id=cmd.action,
-                    disabled=not cmd.enabled,
                 )
             )
             self._visible_actions.append(cmd.action)
         if not opts:
-            opts.append(Option("[dim]no matches[/]", disabled=True))
+            opts.append(Option("[dim]no commands available[/]", disabled=True))
         return opts
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        try:
-            lst = self.query_one("#cmd-list", OptionList)
-            lst.clear_options()
-            for opt in self._render_options(event.value):
-                lst.add_option(opt)
-        except Exception:  # noqa: BLE001
-            pass
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         action = event.option.id or ""
@@ -172,24 +155,5 @@ class CommandModal(BaseModal):
             opt = lst.get_option_at_index(lst.highlighted or 0)
             if opt and opt.id:
                 self.dismiss(opt.id)
-        except Exception:  # noqa: BLE001
-            pass
-
-    def action_reveal_filter(self) -> None:
-        """Show the filter Input row and focus it."""
-        try:
-            inp = self.query_one("#filter", Input)
-            inp.add_class("visible")
-            inp.focus()
-        except Exception:  # noqa: BLE001
-            pass
-
-    def on_input_blurred(self, _event: Input.Blurred) -> None:
-        # When the filter loses focus, hide it again if empty so the modal
-        # returns to its clean list-only state.
-        try:
-            inp = self.query_one("#filter", Input)
-            if not inp.value:
-                inp.remove_class("visible")
         except Exception:  # noqa: BLE001
             pass

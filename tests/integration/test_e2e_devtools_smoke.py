@@ -322,13 +322,13 @@ async def test_always_allow_skips_modal(app_with_pilot, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_responsive_sidebar_buckets(app_with_pilot):
+    """#29 item 3 — sidebar hidden < 130 cols; visible (no icon-strip) at >=130."""
     app, _ = app_with_pilot
     sb = app._panes[app._active_flavor()].sidebar
     sb.apply_terminal_width(80)
     assert sb.has_class("hidden")
     sb.apply_terminal_width(120)
-    assert not sb.has_class("hidden")
-    assert sb.has_class("icon-strip")
+    assert sb.has_class("hidden")
     sb.apply_terminal_width(180)
     assert not sb.has_class("hidden")
     assert not sb.has_class("icon-strip")

@@ -11,7 +11,8 @@ class UserMessage(Static):
         margin: 0 8 1 0;
         padding: 0 1;
         background: $boost;
-        border-left: thick $primary;
+        border-left: tall $primary;
+        color: $text-muted;
     }
     """
 
@@ -30,13 +31,14 @@ class AssistantMessage(Markdown):
     """
 
     def __init__(self, initial: str = "", **kwargs: object) -> None:
-        super().__init__(initial, **kwargs)
+        # Symmetry with UserMessage's role divider (#29 item 24).
+        self._role_label = "[bold $primary]── assistant ──[/]\n"
+        super().__init__(self._role_label + initial, **kwargs)
         self._buffer = initial
 
     def append(self, text: str) -> None:
         self._buffer += text
-        self.update(self._buffer)
+        self.update(self._role_label + self._buffer)
 
     def finalise(self) -> None:
-        # Trigger one final re-render (no-op if Markdown is idempotent)
-        self.update(self._buffer)
+        self.update(self._role_label + self._buffer)

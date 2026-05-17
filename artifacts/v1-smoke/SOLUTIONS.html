@@ -1,0 +1,2993 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nx01-tui v1.0 &mdash; Design Solutions</title>
+  <style>
+:root {
+  --c-bg: #fcfbf8;
+  --c-fg: #1c1a16;
+  --c-muted: #5a5750;
+  --c-line: #e7e3d8;
+  --c-card: #ffffff;
+  --c-card-tint: #f7f4ec;
+  --c-code-bg: #f3f0e7;
+  --c-critical: #d24747;
+  --c-high:     #e98322;
+  --c-medium:   #c9a429;
+  --c-low:      #3a78b8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-bg: #14130f;
+    --c-fg: #ece8de;
+    --c-muted: #918c80;
+    --c-line: #2e2a23;
+    --c-card: #1c1a15;
+    --c-card-tint: #21201a;
+    --c-code-bg: #131210;
+    --c-critical: #f47272;
+    --c-high:     #f5a352;
+    --c-medium:   #e5c454;
+    --c-low:      #6aa6e2;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+header.page-header {
+  padding: 32px 48px 24px;
+  border-bottom: 1px solid var(--c-line);
+  background: var(--c-card-tint);
+}
+header.page-header h1 {
+  margin: 0 0 6px 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+header.page-header .sub {
+  color: var(--c-muted);
+  font-size: 14px;
+}
+header.page-header .tallies {
+  margin-top: 12px;
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+header.page-header .tally {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  display: inline-block;
+}
+.dot.critical { background: var(--c-critical); }
+.dot.high     { background: var(--c-high); }
+.dot.medium   { background: var(--c-medium); }
+.dot.low      { background: var(--c-low); }
+
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 0;
+}
+nav#toc {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 18px 12px 24px 24px;
+  border-right: 1px solid var(--c-line);
+  background: var(--c-card-tint);
+  font-size: 13px;
+}
+nav#toc h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--c-muted);
+  margin: 0 0 10px;
+}
+nav#toc ol {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+nav#toc li {
+  margin: 2px 0;
+}
+nav#toc a {
+  color: var(--c-fg);
+  text-decoration: none;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 6px;
+  border-radius: 3px;
+  line-height: 1.35;
+}
+nav#toc a:hover {
+  background: var(--c-line);
+}
+nav#toc .num {
+  color: var(--c-muted);
+  width: 24px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+main {
+  padding: 32px 48px 96px;
+  max-width: 1140px;
+}
+
+section.issue {
+  margin: 0 0 56px;
+  padding: 22px 26px 26px;
+  border: 1px solid var(--c-line);
+  border-left: 4px solid var(--c-muted);
+  border-radius: 6px;
+  background: var(--c-card);
+  max-width: 1080px;
+}
+section.issue.critical { border-left-color: var(--c-critical); }
+section.issue.high     { border-left-color: var(--c-high); }
+section.issue.medium   { border-left-color: var(--c-medium); }
+section.issue.low      { border-left-color: var(--c-low); }
+
+section.issue h2 {
+  margin: 0 0 6px;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.3;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 99px;
+  color: #fff;
+}
+.badge.critical { background: var(--c-critical); }
+.badge.high     { background: var(--c-high); }
+.badge.medium   { background: var(--c-medium); color: #1c1a16; }
+.badge.low      { background: var(--c-low); }
+
+section.issue .meta {
+  color: var(--c-muted);
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+section.issue .note {
+  color: var(--c-muted);
+  font-size: 12px;
+  font-style: italic;
+  margin: 0 0 14px;
+}
+section.issue .why {
+  margin: 0 0 18px;
+  font-size: 14.5px;
+  color: var(--c-fg);
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 14px;
+}
+.compare > div {
+  border: 1px solid var(--c-line);
+  border-radius: 5px;
+  padding: 14px 16px;
+  background: var(--c-card-tint);
+}
+.compare h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--c-muted);
+  font-weight: 600;
+}
+.compare img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--c-line);
+  border-radius: 3px;
+  background: #0b0b0b;
+  margin-bottom: 8px;
+  display: block;
+}
+.compare figcaption {
+  font-size: 12px;
+  color: var(--c-muted);
+  margin: 4px 0 12px;
+}
+.compare p {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+}
+
+pre, code {
+  font-family: Menlo, "SF Mono", Consolas, ui-monospace, monospace;
+}
+pre {
+  background: var(--c-code-bg);
+  color: var(--c-fg);
+  padding: 10px 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+code { font-size: 0.9em; }
+section.issue .meta code { background: var(--c-code-bg); padding: 1px 4px; border-radius: 3px; }
+
+.solution {
+  background: var(--c-card);
+  border: 1px solid var(--c-line);
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.solution h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.solution p { font-size: 13px; margin: 6px 0; }
+.solution .tradeoff { color: var(--c-muted); font-size: 12.5px; }
+.solution .mockup { background: var(--c-code-bg); padding: 8px 10px; border-radius: 3px; white-space: pre; font-family: Menlo, monospace; font-size: 12px; color: var(--c-fg); margin: 6px 0; overflow-x: auto; }
+
+.recommendation {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--c-card-tint);
+  border-left: 3px solid var(--c-low);
+  border-radius: 0 4px 4px 0;
+  font-size: 14px;
+}
+section.issue.critical .recommendation { border-left-color: var(--c-critical); }
+section.issue.high     .recommendation { border-left-color: var(--c-high); }
+section.issue.medium   .recommendation { border-left-color: var(--c-medium); }
+section.issue.low      .recommendation { border-left-color: var(--c-low); }
+
+@media (max-width: 980px) {
+  .layout { grid-template-columns: 1fr; }
+  nav#toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--c-line); }
+  main { padding: 24px; }
+  .compare { grid-template-columns: 1fr; }
+}
+
+@media print {
+  nav#toc { display: none; }
+  .layout { grid-template-columns: 1fr; }
+  main { padding: 20px; max-width: 100%; }
+  .compare { grid-template-columns: 1fr; }
+  section.issue { break-inside: avoid; page-break-inside: avoid; box-shadow: none; }
+  header.page-header { background: white; color: black; border-bottom: 2px solid #000; }
+  body { background: white; color: black; font-size: 11pt; }
+}
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <h1>nx01-tui v1.0 &mdash; Design Solutions</h1>
+    <p class="sub">Side-by-side current vs. proposed solutions for the 34 numbered items in
+       <code>DESIGN-REVIEW.md</code>. Each item ships 2&ndash;3 architecturally distinct
+       directions plus a recommendation. Generated 2026-05-17.</p>
+    <p class="sub" style="margin-top:8px"><strong>Numbering note:</strong> the source
+       review numbers two items as &ldquo;7.&rdquo; and skips &ldquo;8.&rdquo;. Anchors
+       preserve original numbering as <code>item-7a</code> and <code>item-7b</code>;
+       both display the number 7 as in the source.</p>
+    <div class="tallies"><span class="tally"><span class="dot critical"></span>4 critical</span><span class="tally"><span class="dot high"></span>8 high</span><span class="tally"><span class="dot medium"></span>12 medium</span><span class="tally"><span class="dot low"></span>10 low</span><span class="tally" style="color:var(--c-muted)">&middot; 98 solutions across 34 items</span></div>
+  </header>
+  <div class="layout">
+    <nav id="toc"><h2>34 issues</h2><ol>
+  <li><a href="#item-1"><span class="dot critical"></span><span class="num">1.</span><span class="ttl">Restore StatusBar visibility</span></a></li>
+  <li><a href="#item-2"><span class="dot critical"></span><span class="num">2.</span><span class="ttl">Fix SearchBar height=1 + round border</span></a></li>
+  <li><a href="#item-3"><span class="dot critical"></span><span class="num">3.</span><span class="ttl">Implement icon-strip rendering for MonitorSidebar</span></a></li>
+  <li><a href="#item-4"><span class="dot critical"></span><span class="num">4.</span><span class="ttl">Drive PermissionModal chrome from `self.risk`</span></a></li>
+  <li><a href="#item-5"><span class="dot high"></span><span class="num">5.</span><span class="ttl">Override Textual's default OptionList highlighted-row chrome</span></a></li>
+  <li><a href="#item-6"><span class="dot high"></span><span class="num">6.</span><span class="ttl">Render memory overflow visually</span></a></li>
+  <li><a href="#item-7a"><span class="dot high"></span><span class="num">7.</span><span class="ttl">Commit to one glyph family — drop emoji</span></a></li>
+  <li><a href="#item-7b"><span class="dot high"></span><span class="num">7.</span><span class="ttl">Soften UserMessage thick border rail</span></a></li>
+  <li><a href="#item-9"><span class="dot high"></span><span class="num">9.</span><span class="ttl">Resolve SearchBar keybinding conflict</span></a></li>
+  <li><a href="#item-10"><span class="dot high"></span><span class="num">10.</span><span class="ttl">Add modal-stack backdrop dim</span></a></li>
+  <li><a href="#item-11"><span class="dot high"></span><span class="num">11.</span><span class="ttl">Consolidate ThinkingBlock chevron + spinner</span></a></li>
+  <li><a href="#item-12"><span class="dot high"></span><span class="num">12.</span><span class="ttl">Color-code slash-dropdown category badges</span></a></li>
+  <li><a href="#item-13"><span class="dot medium"></span><span class="num">13.</span><span class="ttl">Flesh out CostModal</span></a></li>
+  <li><a href="#item-14"><span class="dot medium"></span><span class="num">14.</span><span class="ttl">Hide the V2 disabled group by default</span></a></li>
+  <li><a href="#item-15"><span class="dot medium"></span><span class="num">15.</span><span class="ttl">Replace generic `empty` in MemoryModal with store-specific guidance</span></a></li>
+  <li><a href="#item-16"><span class="dot medium"></span><span class="num">16.</span><span class="ttl">Move DebugModal buttons to a dialog footer</span></a></li>
+  <li><a href="#item-17"><span class="dot medium"></span><span class="num">17.</span><span class="ttl">Add scroll affordance + group headers to HelpModal</span></a></li>
+  <li><a href="#item-18"><span class="dot medium"></span><span class="num">18.</span><span class="ttl">Replace hardcoded `—` model placeholder</span></a></li>
+  <li><a href="#item-19"><span class="dot medium"></span><span class="num">19.</span><span class="ttl">Move auth-failed suffix to a toast</span></a></li>
+  <li><a href="#item-20"><span class="dot medium"></span><span class="num">20.</span><span class="ttl">Differentiate ConfirmModal dangerous variant</span></a></li>
+  <li><a href="#item-21"><span class="dot medium"></span><span class="num">21.</span><span class="ttl">Add a redundant top-of-pane state ribbon</span></a></li>
+  <li><a href="#item-22"><span class="dot medium"></span><span class="num">22.</span><span class="ttl">Sync ToolCallBlock chevron to `collapsed` reactive via watcher</span></a></li>
+  <li><a href="#item-23"><span class="dot medium"></span><span class="num">23.</span><span class="ttl">Align slash-dropdown insertion column to a max-width</span></a></li>
+  <li><a href="#item-24"><span class="dot medium"></span><span class="num">24.</span><span class="ttl">Decide on role-divider symmetry</span></a></li>
+  <li><a href="#item-25"><span class="dot low"></span><span class="num">25.</span><span class="ttl">Suppress Textual Footer's `more bindings` overflow indicator</span></a></li>
+  <li><a href="#item-26"><span class="dot low"></span><span class="num">26.</span><span class="ttl">Restyle TabbedContent underline</span></a></li>
+  <li><a href="#item-27"><span class="dot low"></span><span class="num">27.</span><span class="ttl">Add placeholder hint inside empty ChatInput</span></a></li>
+  <li><a href="#item-28"><span class="dot low"></span><span class="num">28.</span><span class="ttl">Add `enter toggle · / filter` to SkillsModal hint</span></a></li>
+  <li><a href="#item-29"><span class="dot low"></span><span class="num">29.</span><span class="ttl">Move ToolsModal V2 callout off the hint line</span></a></li>
+  <li><a href="#item-30"><span class="dot low"></span><span class="num">30.</span><span class="ttl">Unify spinner widgets · honour NX01_REDUCE_MOTION</span></a></li>
+  <li><a href="#item-31"><span class="dot low"></span><span class="num">31.</span><span class="ttl">Decode `&amp;#x27;` apostrophes in SVG snapshots</span></a></li>
+  <li><a href="#item-32"><span class="dot low"></span><span class="num">32.</span><span class="ttl">Replace `_(skill content not yet streamed)_` placeholder</span></a></li>
+  <li><a href="#item-33"><span class="dot low"></span><span class="num">33.</span><span class="ttl">Rebind `q` → `ctrl+q` for quit</span></a></li>
+  <li><a href="#item-34"><span class="dot low"></span><span class="num">34.</span><span class="ttl">Replace `·` separators with `┃` and segment header</span></a></li>
+</ol></nav>
+    <main>
+      <section id="item-1" class="issue critical">
+  <h2><span class="badge critical">Critical</span> <span>1. Restore StatusBar visibility</span></h2>
+  <p class="meta">Where: <code>app.py:148-152</code> · <code>widgets/status_bar.py:24-29</code> · <code>app.tcss:11-12</code> · Screens S29, S46–S50</p>
+  <p class="why"><strong>Why it matters:</strong> The bottom-bar agent state is one of v1's primary 'legibility from anywhere' affordances. Footer occupies the same dock slot and silently wins, so every state across S46–S50 looks identical to the user — token count, thinking spinner, error glyph all never reach the screen.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s29_status_bar_streaming.svg" alt="S29 — STREAMING (StatusBar invisible behind Footer)" loading="lazy"><figcaption>S29 — STREAMING (StatusBar invisible behind Footer)</figcaption>
+      <img src="s47_status_bar_thinking.svg" alt="S47 — THINKING (identical bottom row)" loading="lazy"><figcaption>S47 — THINKING (identical bottom row)</figcaption>
+      <p>Bottom row across IDLE / THINKING / TOOL_CALL / DONE / ERROR shows only the Footer's binding hints (`^p Commands ^s Sessions ^m Memory …`). The StatusBar widget mounts, its reactives update, but pixel output is suppressed by the Footer sharing `dock: bottom; height: 1`.</p>
+      <pre><code># app.py:148-152
+def compose(self) -&gt; ComposeResult:
+    yield AppHeader(id="app-header")
+    yield TabbedContent(id="flavor-tabs")
+    yield StatusBar(id="status-bar")
+    yield Footer()           # &lt;-- wins the dock slot
+
+# app.tcss:11-12
+StatusBar  { dock: bottom; height: 1; ...}
+Footer     { dock: bottom; }</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Drop Footer, fold its hints into StatusBar</h4>
+        <pre><code># app.py — remove Footer
+def compose(self) -&gt; ComposeResult:
+    yield AppHeader(id="app-header")
+    yield TabbedContent(id="flavor-tabs")
+    yield StatusBar(id="status-bar")
+
+# status_bar.py — third column carries dynamic hints
+yield Static(self._hints_text(), id="hints")</code></pre>
+        <div class="mockup">● Ready  asst  ·  1,240 / 200,000  3%   ^p cmd  ^s sess  ^m mem  ? help</div>
+        <p class="tradeoff"><strong>Pros:</strong> One bar to design, full pixel budget for state + tokens + hints; no slot conflict. &middot; <strong>Cons:</strong> Lose Textual's automatic binding-discovery; must keep hints text manually in sync.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Stack vertically with a Vertical container</h4>
+        <pre><code># app.py
+from textual.containers import Vertical
+def compose(self) -&gt; ComposeResult:
+    yield AppHeader(id="app-header")
+    yield TabbedContent(id="flavor-tabs")
+    with Vertical(id="bottom-chrome"):
+        yield StatusBar(id="status-bar")
+        yield Footer()
+
+# app.tcss
+#bottom-chrome { dock: bottom; height: 2; }
+#bottom-chrome StatusBar { height: 1; }
+#bottom-chrome Footer    { height: 1; }</code></pre>
+        <div class="mockup">● Ready  asst   1,240 / 200,000  3%
+^p Commands  ^s Sessions  ^m Memory  ^b Sidebar</div>
+        <p class="tradeoff"><strong>Pros:</strong> Keep Textual's Footer behaviour (auto-discovers BINDINGS); explicit ordering, no class war over dock slot. &middot; <strong>Cons:</strong> Burns a second row at the bottom — on a 24-row terminal that hurts the conversation area.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — One CombinedStatusBar widget replacing both</h4>
+        <pre><code># widgets/combined_status_bar.py
+class CombinedStatusBar(Horizontal):
+    DEFAULT_CSS = '''
+    CombinedStatusBar { dock: bottom; height: 1; background: $surface; }
+    '''
+    def compose(self):
+        yield Static(self._state_text(), id="state")
+        yield Static("", id="spacer-l")
+        yield Static(self._tokens_text(), id="tokens")
+        yield Static("", id="spacer-r")
+        yield Static(self._bindings_text(), id="bindings")
+
+    def _bindings_text(self) -&gt; str:
+        # Render directly from self.app.BINDINGS for parity
+        return "  ".join(f"[bold]{b.key}[/] {b.description}"
+                         for b in self.app.BINDINGS if b.show)</code></pre>
+        <div class="mockup">● Ready · asst                 1,240 / 200,000  3%               ^p cmd · ^s sess · ? help</div>
+        <p class="tradeoff"><strong>Pros:</strong> Single source of truth for the bottom row; render bindings from app's BINDINGS list so help-modal drift goes away (relates to H5). &middot; <strong>Cons:</strong> More code, and you re-implement Textual's Footer overflow / 'more bindings' handling.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Cheapest, restores intent, and leaves room to grow a third 'hints' column later if needed.</p>
+</section>
+<section id="item-2" class="issue critical">
+  <h2><span class="badge critical">Critical</span> <span>2. Fix SearchBar height=1 + round border</span></h2>
+  <p class="meta">Where: <code>widgets/search_bar.py:16-20</code> · <code>app.tcss:43</code> · Screen S26</p>
+  <p class="why"><strong>Why it matters:</strong> A round border needs 3 rows (top edge, content, bottom edge). At height 1, Textual draws only the edges and the content row is squeezed out — no caret, no placeholder, no glyph. Ctrl+F is the primary in-conversation search affordance; users press it and nothing visibly happens.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s26_search_bar.svg" alt="S26 — Ctrl+F reveals a hollow 1-row rectangle" loading="lazy"><figcaption>S26 — Ctrl+F reveals a hollow 1-row rectangle</figcaption>
+      <p>A thin border outline with no caret and no `Search…` placeholder visible. Same problem latent in `ChatInput.min-height: 2` (border crops the content row at minimum).</p>
+      <pre><code># widgets/search_bar.py:15-23
+DEFAULT_CSS = '''
+SearchBar {
+    display: none;
+    dock: top;
+    height: 1;
+    border: round $primary;
+    background: $surface;
+}
+SearchBar.visible { display: block; }
+'''</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Bump height: 3 to accommodate the round border</h4>
+        <pre><code>SearchBar {
+    display: none;
+    dock: top;
+    height: 3;
+    border: round $primary;
+    background: $surface;
+}</code></pre>
+        <div class="mockup">╭─🔍 Search… ────────────────── 0/0  enter next · esc close ─╮
+│                                                            │
+╰────────────────────────────────────────────────────────────╯</div>
+        <p class="tradeoff"><strong>Pros:</strong> One-line CSS change; preserves the round-card aesthetic; matches the standard 3-row bordered input idiom everywhere else in the app. &middot; <strong>Cons:</strong> Uses 3 rows of vertical space when active; momentarily pushes conversation down on toggle.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Keep height: 1, drop the border, use a glyph + status line</h4>
+        <pre><code>SearchBar {
+    display: none;
+    dock: top;
+    height: 1;
+    border: none;
+    background: $boost;
+    padding: 0 1;
+}
+/* leading glyph + trailing hint in compose() */
+yield Static("🔍", id="lead")
+yield Input(placeholder="Search…", id="query")
+yield Static("0/0  enter · esc", id="hint")</code></pre>
+        <div class="mockup">🔍 my query                                       0/0  enter · esc</div>
+        <p class="tradeoff"><strong>Pros:</strong> Single row, dense; matches the 1-row Vim/fzf search idiom; minimal vertical thrash. &middot; <strong>Cons:</strong> Loses visual containment — users may not realise the search bar is a distinct mode.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Overlay floating chip (modal-light pattern)</h4>
+        <pre><code>SearchBar {
+    display: none;
+    layer: overlay;
+    offset: 50% 1;          /* top-centred */
+    width: 60;
+    height: 3;
+    border: tall $primary;
+    background: $surface;
+    padding: 0 1;
+}</code></pre>
+        <div class="mockup">              ╭─🔍 Search ──────── 0/0 enter·esc ╮
+              │ my query                            │
+              ╰─────────────────────────────────────╯</div>
+        <p class="tradeoff"><strong>Pros:</strong> Doesn't disturb conversation layout; visually unambiguous as a transient mode. &middot; <strong>Cons:</strong> Floating overlays add z-order complexity; harder to keyboard-flow to from the conversation.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Smallest blast radius for a critical: one CSS value. Also audit ChatInput.min-height to 3 in the same change.</p>
+</section>
+<section id="item-3" class="issue critical">
+  <h2><span class="badge critical">Critical</span> <span>3. Implement icon-strip rendering for MonitorSidebar</span></h2>
+  <p class="meta">Where: <code>widgets/sidebar.py:296-360</code> · Screen S13</p>
+  <p class="why"><strong>Why it matters:</strong> At width &lt; 130, the sidebar gets `.icon-strip` (width: 3) but each section still tries to render its full structure — truncated to invisible. A user on a 110-col terminal (VS Code split, tmux half-screen) loses the entire monitoring sidebar with zero feedback it exists.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s13_sidebar_icon_strip.svg" alt="S13 — sidebar collapses to a blank 3-cell sliver" loading="lazy"><figcaption>S13 — sidebar collapses to a blank 3-cell sliver</figcaption>
+      <p>Right side of the conversation shows a 3-column-wide empty sliver with the left border separator. No glyphs, no hint that activity / memory / skills / mcp / context / session exist.</p>
+      <pre><code># widgets/sidebar.py
+MonitorSidebar.icon-strip { width: 3; }   # only sets width; no per-section render
+
+def apply_terminal_width(self, width: int) -&gt; None:
+    self.remove_class("hidden", "icon-strip")
+    if width &lt; 100: self.add_class("hidden");     return
+    if width &lt; 130: self.add_class("icon-strip"); return
+    ...</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — `is_icon_strip` reactive; each section yields a 1-cell glyph</h4>
+        <pre><code>class MonitorSidebar(Vertical):
+    is_icon_strip: reactive[bool] = reactive(False)
+
+    def apply_terminal_width(self, width: int) -&gt; None:
+        self.remove_class("hidden", "icon-strip")
+        if width &lt; 100: self.add_class("hidden"); self.is_icon_strip = False; return
+        if width &lt; 130: self.add_class("icon-strip"); self.is_icon_strip = True; return
+        self.is_icon_strip = False
+        self.styles.width = max(30, min(50, width // 4))
+
+# Each section override:
+class ActivitySection(_Section):
+    GLYPH = "◉"          # Activity / Memory / Skills / MCP / Context / Session
+    def compose(self) -&gt; ComposeResult:
+        if self.app.query_one(MonitorSidebar).is_icon_strip:
+            yield Static(self.GLYPH, classes="strip-glyph"); return
+        ...</code></pre>
+        <div class="mockup">┌─┐
+│◉│  activity
+│▦│  memory
+│⚡│  skills
+│⬢│  mcp
+│▤│  context
+│▭│  session
+└─┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Preserves all six sections at a glance; clicking/hovering a glyph can pop the section open as a tooltip later. &middot; <strong>Cons:</strong> Touches every section subclass; reactive plumbing across the sidebar.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Hide sidebar entirely below 130, surface a one-line `ctrl+b` hint</h4>
+        <pre><code>def apply_terminal_width(self, width: int) -&gt; None:
+    self.remove_class("hidden", "icon-strip")
+    if width &lt; 130:
+        self.add_class("hidden")
+        # notify once per session via app
+        self.app.notify("Sidebar hidden — ctrl+b to toggle", timeout=2)
+        return
+    self.styles.width = max(30, min(50, width // 4))</code></pre>
+        <div class="mockup">(no sidebar; bottom-bar hint reads `ctrl+b sidebar`)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Simplest. The narrow terminal already has no room; using it for conversation is the right tradeoff. &middot; <strong>Cons:</strong> Lose the at-a-glance state surface entirely — back to header + status bar only.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Replace sidebar with a single bottom-edge ribbon at narrow widths</h4>
+        <pre><code># New widget: MiniMonitorRibbon (dock: bottom; height: 1) shown only in icon-strip mode
+class MiniMonitorRibbon(Horizontal):
+    DEFAULT_CSS = '''
+    MiniMonitorRibbon { dock: bottom; height: 1; background: $surface; }
+    '''
+    def update_from(self, state):
+        self.update(
+            f"◉ {state.tool_count} tools  ▦ {state.mem_pct}%  "
+            f"⚡ {len(state.skills_loaded)} skills  ▤ {state.tokens:,}"
+        )</code></pre>
+        <div class="mockup">◉ 3 tools  ▦ 42%  ⚡ 2 skills  ▤ 1,240 tokens</div>
+        <p class="tradeoff"><strong>Pros:</strong> Reuses vertical space the conversation needs; horizontal density matches lazygit's status-bar pattern. &middot; <strong>Cons:</strong> A second bottom row competes with StatusBar (C1) for the dock; needs ordering rules.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Keeps the sidebar's mental model continuous across breakpoints — users see the same six sections in a different density.</p>
+</section>
+<section id="item-4" class="issue critical">
+  <h2><span class="badge critical">Critical</span> <span>4. Drive PermissionModal chrome from `self.risk`</span></h2>
+  <p class="meta">Where: <code>modals/permission_modal.py:18-32</code> · Screens S20 (medium) vs S40 (high)</p>
+  <p class="why"><strong>Why it matters:</strong> S20 and S40 are pixel-identical apart from the word 'medium' vs 'high'. A destructive `rm -rf /` reads with the same urgency as a cache rebuild. Users will habituate to 'always Allow' if escalation is invisible.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s20_permission_modal.svg" alt="S20 — medium-risk variant" loading="lazy"><figcaption>S20 — medium-risk variant</figcaption>
+      <img src="s40_permission_modal_high.svg" alt="S40 — high-risk variant (visually identical)" loading="lazy"><figcaption>S40 — high-risk variant (visually identical)</figcaption>
+      <p>Same `border: thick $error`, same warning-tinted Risk row, same button order, same dimensions across all risk levels.</p>
+      <pre><code># modals/permission_modal.py:18-32
+DEFAULT_CSS = '''
+PermissionModal .dialog {
+    width: 64;
+    border: thick $error;       # constant for every risk
+}
+PermissionModal Button { margin: 0 1; }
+PermissionModal #risk {
+    color: $warning;            # constant for every risk
+    margin-bottom: 1;
+}
+'''</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Risk-driven CSS class on the dialog; reorder + relabel buttons</h4>
+        <pre><code># permission_modal.py
+def compose(self) -&gt; ComposeResult:
+    with Vertical(classes=f"dialog risk-{self.risk}"):
+        yield Static("[bold]Tool Permission Required[/]", classes="dialog-title")
+        ...
+        with Horizontal():
+            if self.risk == "high":
+                yield Button("Deny (n)",  id="deny",  variant="error")
+                yield Button("Allow (y)", id="allow", variant="default")
+                # No "Always allow" for high-risk tools
+            else:
+                yield Button("Allow (y)", id="allow", variant="success")
+                yield Button("Deny (n)",  id="deny",  variant="error")
+                yield Button("Always allow this tool (a)", id="always")
+
+DEFAULT_CSS = '''
+PermissionModal .dialog            { width: 64; }
+PermissionModal .dialog.risk-low    { border: round  $warning; }
+PermissionModal .dialog.risk-medium { border: thick  $warning; }
+PermissionModal .dialog.risk-high   { border: heavy  $error; }
+PermissionModal .dialog.risk-high #risk {
+    color: $error; text-style: bold reverse;
+}
+'''</code></pre>
+        <div class="mockup">╔══ ⚠ Tool Permission Required ═══════╗   (high — heavy red)
+║ Tool:  rm                            ║
+║ Args:  -rf /                         ║
+║  RISK: HIGH                         ║
+║                                      ║
+║      [ Deny (n) ]  [ Allow (y) ]    ║
+╚══════════════════════════════════════╝</div>
+        <p class="tradeoff"><strong>Pros:</strong> One CSS file change scales to every risk level; high-risk literally cannot 'Always Allow'. &middot; <strong>Cons:</strong> More CSS to maintain; the three risk classes need to stay in lockstep with backend values.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Two-modal split: confirm flow for medium, type-the-tool-name gate for high</h4>
+        <pre><code># high-risk requires the user to retype the tool name
+if self.risk == "high":
+    yield Static("[$error bold]This action is destructive.[/]")
+    yield Static(f"Type the tool name [bold]{self.tool}[/] to confirm.")
+    yield Input(placeholder=self.tool, id="confirm-input")
+    yield Button("Run (enter)", id="allow", variant="error", disabled=True)
+    # enable button only when input.value == self.tool
+
+def on_input_changed(self, ev: Input.Changed) -&gt; None:
+    self.query_one("#allow", Button).disabled = ev.value != self.tool</code></pre>
+        <div class="mockup">┌── ⚠ Tool Permission Required ──┐
+│ rm  -rf /                       │
+│ Type 'rm' to confirm: [____]    │
+│                  [ Run (enter) ]│
+└─────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Highest possible friction for the most dangerous action; matches GitHub repo-delete UX. &middot; <strong>Cons:</strong> Significant flow disruption; can frustrate when the same dangerous tool is invoked repeatedly.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Animated pulsing border on high-risk only</h4>
+        <pre><code># permission_modal.py
+def on_mount(self) -&gt; None:
+    if self.risk == "high":
+        dialog = self.query_one(".dialog")
+        self._pulse_state = 0
+        self.set_interval(0.4, lambda: self._pulse(dialog))
+
+def _pulse(self, dialog) -&gt; None:
+    self._pulse_state ^= 1
+    style = "heavy $error" if self._pulse_state else "heavy $warning"
+    dialog.styles.border = (style.split()[0], style.split()[1])</code></pre>
+        <div class="mockup">┏━━ ⚠ Tool Permission Required (HIGH) ━━┓   &lt;- pulsing red/yellow
+</div>
+        <p class="tradeoff"><strong>Pros:</strong> Pre-attentive — motion catches the eye even on a glanced screen. &middot; <strong>Cons:</strong> Bad for users with motion sensitivity; conflicts with a future `NX01_REDUCE_MOTION` env var (see #30).</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Standard escalation pattern; pure CSS + small compose() branch; no motion, no extra modals.</p>
+</section>
+<section id="item-5" class="issue high">
+  <h2><span class="badge high">High</span> <span>5. Override Textual's default OptionList highlighted-row chrome</span></h2>
+  <p class="meta">Where: <code>app.tcss</code> (shared) · Screens S06, S07, S08, S18, S19, S22, S37, S38</p>
+  <p class="why"><strong>Why it matters:</strong> Every row of every OptionList is prefixed with a full-height `▊` glyph (Textual's default `option-list--option-highlighted` indicator drawn because no app-level override exists). It looks like a forced bookmark on every row, not a focus cue. The truly highlighted row is indistinguishable from its siblings.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s06_command_modal.svg" alt="S06 — every row prefixed with `▊`" loading="lazy"><figcaption>S06 — every row prefixed with `▊`</figcaption>
+      <img src="s18_skills_modal.svg" alt="S18 — same rail in SkillsModal" loading="lazy"><figcaption>S18 — same rail in SkillsModal</figcaption>
+      <img src="s38_sessions_modal_filtered.svg" alt="S38 — same rail in SessionsModal" loading="lazy"><figcaption>S38 — same rail in SessionsModal</figcaption>
+      <p>Six modals (Commands, Sessions, Skills, Tools, Debug, ModelPicker) all show the same vertical `▊▊▊▊▊` rail flush-left.</p>
+      <pre><code># No app.tcss rule overriding the Textual default
+# OptionList .option-list--option            { padding: 0 0; }
+# OptionList .option-list--option-highlighted{ background: $accent; text-style: reverse; }</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Shared OptionList rule in app.tcss (flat highlight, no rail)</h4>
+        <pre><code>/* app.tcss — add at bottom */
+OptionList {
+    background: transparent;
+}
+OptionList &gt; .option-list--option {
+    padding: 0 1;
+}
+OptionList &gt; .option-list--option-highlighted {
+    background: $boost;
+    color: $text;
+    text-style: bold;
+}
+OptionList &gt; .option-list--option-disabled {
+    color: $text-muted;
+    text-style: dim;
+}</code></pre>
+        <div class="mockup">  Sessions            Resume · fork · ...
+▌ Memory             Agent + user profile      &lt;- highlighted row only
+  New Session        Start a fresh session</div>
+        <p class="tradeoff"><strong>Pros:</strong> One file; fixes six modals at once; pre-existing `$boost` token stays theme-consistent. &middot; <strong>Cons:</strong> Loses Textual's vendor-default 'highlighted' affordance entirely — users used to it have to relearn.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Replace rail with a left-aligned `▶` only on the highlighted row</h4>
+        <pre><code>/* app.tcss */
+OptionList &gt; .option-list--option { padding: 0 1 0 3; }     /* reserve 2 cells */
+OptionList &gt; .option-list--option-highlighted {
+    background: $surface;
+    color: $primary;
+    text-style: bold;
+}
+/* Compose-side: prepend '▶ ' to the label of the highlighted row.
+   In practice override OptionList.render_line, or add an arrow
+   widget in the row template via a custom OptionList subclass. */</code></pre>
+        <div class="mockup">  Sessions            Resume · fork · ...
+▶ Memory             Agent + user profile
+  New Session        Start a fresh session</div>
+        <p class="tradeoff"><strong>Pros:</strong> Keeps a single-cell focus indicator; familiar pattern (fzf, gum, dialog). &middot; <strong>Cons:</strong> Needs an OptionList subclass to inject the `▶` glyph; more code per modal.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Inverse-video the entire highlighted row, no glyph at all</h4>
+        <pre><code>/* app.tcss */
+OptionList &gt; .option-list--option { padding: 0 1; }
+OptionList &gt; .option-list--option-highlighted {
+    background: $primary;
+    color: $background;
+}</code></pre>
+        <div class="mockup">  Sessions            Resume · fork · ...
+░░Memory░░░░░░░░░░░░░░Agent + user profile░░  &lt;- full-row inverse
+  New Session        Start a fresh session</div>
+        <p class="tradeoff"><strong>Pros:</strong> Maximum contrast; works at any zoom; no glyph alignment headaches. &middot; <strong>Cons:</strong> Heavy visually — interacts badly with `[dim]` markup already inside row labels.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Subtlest, theme-consistent, scales to all six modals via one rule.</p>
+</section>
+<section id="item-6" class="issue high">
+  <h2><span class="badge high">High</span> <span>6. Render memory overflow visually</span></h2>
+  <p class="meta">Where: <code>widgets/sidebar.py:107-141</code> · Screen S51</p>
+  <p class="why"><strong>Why it matters:</strong> When `used &gt; limit` (e.g. agent 22,500 / 2,200 = 1023%) the ProgressBar caps at 100% and looks identical to a healthy 50% bar. Memory exhaustion is a state the user must respond to (with `/compact`); the bar implying 'everything fits' while values are 10× over is actively misleading.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s51_sidebar_populated.svg" alt="S51 — agent 22,500 / 2,200 shows as a solid bar" loading="lazy"><figcaption>S51 — agent 22,500 / 2,200 shows as a solid bar</figcaption>
+      <p>Two rows: `agent  22,500 / 2,200` and `user  8,800 / 1,375`, each followed by a full green-orange-red ProgressBar that caps visually at 100% with no overflow cue.</p>
+      <pre><code># widgets/sidebar.py:120-141
+def _label(self, name: str, used: int, limit: int) -&gt; str:
+    pct = (used / limit) * 100 if limit else 0
+    color = "$success" if pct &lt; 75 else ("$warning" if pct &lt; 90 else "$error")
+    return f"[{color}]{name}[/]  [dim]{used:,} / {limit:,}[/]"</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — `+over` suffix + `/compact` hint when used &gt; limit</h4>
+        <pre><code>def _label(self, name: str, used: int, limit: int) -&gt; str:
+    pct = (used / limit) * 100 if limit else 0
+    color = "$success" if pct &lt; 75 else ("$warning" if pct &lt; 90 else "$error")
+    if used &gt; limit:
+        over = used - limit
+        return (f"[{color} bold]{name}[/]  [{color}]{used:,} / {limit:,}[/]  "
+                f"[$error bold]+{over:,} over[/]")
+    return f"[{color}]{name}[/]  [dim]{used:,} / {limit:,}[/]"
+
+# And below the bar add a single conditional hint row:
+yield Static("[$warning]/compact to free space[/]",
+             id="agent-overflow-hint", classes="hidden")
+# Toggle .hidden in watch_agent_chars</code></pre>
+        <div class="mockup">agent  22,500 / 2,200   +20,300 over
+████████████████████████████  &lt;- $error
+/compact to free space</div>
+        <p class="tradeoff"><strong>Pros:</strong> Numeric overflow visible in the label; clear next-action prompt; no widget swap. &middot; <strong>Cons:</strong> Two extra rows of vertical space when overflowing.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Switch the bar to a diagonal-stripe pattern when over-cap</h4>
+        <pre><code># sidebar.py — extend watch_agent_chars
+def watch_agent_chars(self, value: int) -&gt; None:
+    bar = self.query_one("#agent-bar", ProgressBar)
+    bar.progress = min(value, self.AGENT_LIMIT)
+    over = value &gt; self.AGENT_LIMIT
+    bar.set_class(over, "overflow")
+    self.query_one("#agent-label", Static).update(self._label("agent", value, self.AGENT_LIMIT))
+
+# CSS
+ProgressBar.overflow Bar &gt; .bar--bar {
+    color: $error;
+    background: $error 20%;
+    /* simulate stripes via background image — Textual supports a
+       repeating bar render glyph via component_classes */
+}</code></pre>
+        <div class="mockup">agent  22,500 / 2,200
+▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  &lt;- striped red</div>
+        <p class="tradeoff"><strong>Pros:</strong> Single visual layer carries the signal; doesn't burn rows. &middot; <strong>Cons:</strong> Textual's ProgressBar doesn't natively support striped fills; needs subclass / custom bar character.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Replace bar with a numeric pill widget when &gt; 100%</h4>
+        <pre><code># On overflow, hide ProgressBar and mount a Static pill:
+def watch_agent_chars(self, value: int) -&gt; None:
+    bar = self.query_one("#agent-bar", ProgressBar)
+    pill = self.query_one("#agent-pill", Static)
+    if value &gt; self.AGENT_LIMIT:
+        bar.display = False
+        pill.display = True
+        pct = (value / self.AGENT_LIMIT) * 100
+        pill.update(f"[$error reverse bold] {pct:.0f}% — /compact [/]")
+    else:
+        bar.display = True
+        pill.display = False
+        bar.progress = value</code></pre>
+        <div class="mockup">agent  22,500 / 2,200
+  [ 1023% — /compact ]   &lt;- inverse red pill</div>
+        <p class="tradeoff"><strong>Pros:</strong> Unambiguous; the overflow state visually replaces (not extends) the healthy bar. &middot; <strong>Cons:</strong> Extra widget per row; the eye-line moves when crossing 100%.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Carries the overflow signal in the existing label without inventing a new widget; users learn `/compact` from the inline hint.</p>
+</section>
+<section id="item-7a" class="issue high">
+  <h2><span class="badge high">High</span> <span>7. Commit to one glyph family — drop emoji</span></h2>
+  <p class="meta">Where: <code>widgets/file_picker.py:107</code> · <code>modals/simple_modals.py:33,54</code> · <code>widgets/sidebar.py:171</code> · <code>widgets/skill_block.py:51</code> · Screens S05, S18, S19, S52</p>
+  <p class="note">Note: Source DESIGN-REVIEW.md numbers two items as '7.'; this is the first.</p>
+  <p class="why"><strong>Why it matters:</strong> REPORT.md explicitly verifies `emoji_free=True` for the Command palette while the surrounding app uses emoji freely. Emoji width varies across terminals (`🔧` is often 2-cell, `⚡` sometimes 1, sometimes 2) — column alignment breaks. The mix of glyph styles (emoji + box-drawing + Nerd-Font-style) makes the app feel assembled, not designed.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s05_file_picker.svg" alt="S05 — file picker rows show `📄`" loading="lazy"><figcaption>S05 — file picker rows show `📄`</figcaption>
+      <img src="s18_skills_modal.svg" alt="S18 — Skills rows show `⚡`" loading="lazy"><figcaption>S18 — Skills rows show `⚡`</figcaption>
+      <img src="s19_tools_modal.svg" alt="S19 — Tools rows show `🔧`" loading="lazy"><figcaption>S19 — Tools rows show `🔧`</figcaption>
+      <p>`📄` in file picker, `🔧` in tools modal, `⚡` in skills modal + sidebar + skill block, `§` in memory modal. All different families, all 2-cell on most terminals.</p>
+      <pre><code># widgets/file_picker.py:107
+self.add_option(Option(f"📄  {path}", id=path))
+
+# modals/simple_modals.py:33
+opts.append(Option(f"⚡ [bold]{name}[/]  {loaded}  [dim]{kb}[/]"))
+
+# modals/simple_modals.py:54
+opts.append(Option(f"🔧 [bold]{name}[/]  [dim]{desc[:50]}[/]"))
+
+# widgets/sidebar.py:171
+container.mount(Static(f"[$accent]⚡[/] [bold]{skill['name']}[/]{size_str}"))
+
+# widgets/skill_block.py:51
+yield Static("⚡", id="icon")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Drop all emoji; commit to monochrome geometric</h4>
+        <pre><code># New module: nx01_tui/tui/glyphs.py
+FILE   = "▣"
+TOOL   = "▸"
+SKILL  = "◆"
+MCP    = "⬢"
+MEMORY = "❡"
+CMD    = "›"
+
+# widgets/file_picker.py
+from ..glyphs import FILE
+self.add_option(Option(f"{FILE}  {path}", id=path))
+
+# modals/simple_modals.py — SkillsModal
+from ..glyphs import SKILL
+opts.append(Option(f"{SKILL} [bold]{name}[/]  {loaded}  [dim]{kb}[/]"))
+
+# modals/simple_modals.py — ToolsModal
+from ..glyphs import TOOL
+opts.append(Option(f"{TOOL} [bold]{name}[/]  [dim]{desc[:50]}[/]"))</code></pre>
+        <div class="mockup">▣  app.py
+▣  config.py
+◆ ci-setup   ○ available  4.2kb
+▸ bash       runs shell commands</div>
+        <p class="tradeoff"><strong>Pros:</strong> Single Unicode family; predictable 1-cell width; theme-color-able via markup; one module to audit. &middot; <strong>Cons:</strong> Less immediately recognisable to new users (no muscle memory for `▣` vs `📄`).</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Commit to Nerd-Font icons everywhere (assumes Nerd-Font terminal)</h4>
+        <pre><code># nx01_tui/tui/glyphs.py
+FILE   = "\uf15b"   # nf-fa-file_text
+TOOL   = "\uf0ad"   # nf-fa-wrench
+SKILL  = "\uf0e7"   # nf-fa-bolt
+MCP    = "\uf233"   # nf-fa-server
+MEMORY = "\uf02d"   # nf-fa-book
+
+# CLI flag --no-nerd-font falls back to Option A's monochrome set:
+if app.config.no_nerd_font: from .glyphs_ascii import *
+else:                       from .glyphs_nerd  import *</code></pre>
+        <div class="mockup">    app.py
+   ci-setup   ○ available  4.2kb
+   bash       runs shell commands</div>
+        <p class="tradeoff"><strong>Pros:</strong> Most visually rich; matches modern dev terminals (Ghostty, WezTerm) defaulting to Nerd Fonts. &middot; <strong>Cons:</strong> Hard requirement on a specific font; non-Nerd terminals show tofu boxes.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Drop glyphs entirely; rely on bold + color category badges</h4>
+        <pre><code># No glyph prefixes anywhere. Category badges only:
+opts.append(Option(f"[bold]{name}[/]   [dim]{desc[:50]}[/]   [$success](tool)[/]"))
+opts.append(Option(f"[bold]{name}[/]   [dim]{loaded}[/]      [$accent](skill)[/]"))
+self.add_option(Option(f"[dim]·[/] {path}", id=path))  # subtle dot for file</code></pre>
+        <div class="mockup">bash             runs shell commands         (tool)
+ci-setup         ○ available  4.2kb         (skill)
+·  app.py
+·  config.py</div>
+        <p class="tradeoff"><strong>Pros:</strong> Zero font/terminal compatibility risk; cleanest possible look. &middot; <strong>Cons:</strong> Loses pre-attentive at-a-glance category scan; users must read the badge.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Predictable, theme-friendly, no font dependency; provides the scanability of icons without emoji width chaos.</p>
+</section>
+<section id="item-7b" class="issue high">
+  <h2><span class="badge high">High</span> <span>7. Soften UserMessage thick border rail</span></h2>
+  <p class="meta">Where: <code>widgets/messages.py:9-19</code> · Screens S11, S27, S28, S42–S45, S51, S52</p>
+  <p class="note">Note: Source DESIGN-REVIEW.md numbers two items as '7.'; this is the second (the source skips '8.').</p>
+  <p class="why"><strong>Why it matters:</strong> `border-left: thick $primary` renders as a stacked column of `█` glyphs. Combined with `── you ──` label, the user turn reads as a heavy, dominant block — visually more prominent than the assistant reply that follows. This reverses the natural reading hierarchy.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s11_full_turn.svg" alt="S11 — heavy `█` rail on the user turn" loading="lazy"><figcaption>S11 — heavy `█` rail on the user turn</figcaption>
+      <img src="s52_code_block_after_turn.svg" alt="S52 — same rail dominates above the assistant reply" loading="lazy"><figcaption>S52 — same rail dominates above the assistant reply</figcaption>
+      <p>A 1-column-wide solid-block left border in primary colour against the user text, plus a `── you ──` label. The assistant's reply below has no border and reads lighter.</p>
+      <pre><code># widgets/messages.py:9-19
+class UserMessage(Static):
+    DEFAULT_CSS = '''
+    UserMessage {
+        margin: 0 8 1 0;
+        padding: 0 1;
+        background: $boost;
+        border-left: thick $primary;   # heavy `█` rail
+    }
+    '''</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Thin (`tall`) left border + dim text</h4>
+        <pre><code>class UserMessage(Static):
+    DEFAULT_CSS = '''
+    UserMessage {
+        margin: 0 8 1 0;
+        padding: 0 1;
+        background: $boost 30%;
+        border-left: tall $primary;
+        color: $text-muted;
+    }
+    '''
+    def __init__(self, text: str, **kwargs):
+        super().__init__(f"[dim]── you ──[/]\n{text}", **kwargs)</code></pre>
+        <div class="mockup">▎ ── you ──
+▎ what is the status of the build?
+
+Assistant reply here, bright and dominant.</div>
+        <p class="tradeoff"><strong>Pros:</strong> Single-cell `▎` rail still flags the turn boundary; muted text recedes; minimal code change. &middot; <strong>Cons:</strong> Subtle — some users will miss the boundary cue.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Drop the border; lean on label + right-side indent</h4>
+        <pre><code>class UserMessage(Static):
+    DEFAULT_CSS = '''
+    UserMessage {
+        margin: 0 12 1 8;       /* indent right; small left indent */
+        padding: 0 1;
+        color: $text-muted;
+        text-style: italic;
+    }
+    '''
+    def __init__(self, text: str, **kwargs):
+        super().__init__(f"[bold dim]you[/]  {text}", **kwargs)</code></pre>
+        <div class="mockup">        you  what is the status of the build?
+
+Assistant reply, full-width and bright.</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest visual hierarchy; assistant content has all the visual weight. &middot; <strong>Cons:</strong> Loses any persistent visual boundary; multi-paragraph user turns get harder to scan.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Swap roles: keep heavy border, but on AssistantMessage instead</h4>
+        <pre><code>class UserMessage(Static):
+    DEFAULT_CSS = '''UserMessage { margin: 0 8 1 0; padding: 0 1; color: $text-muted; }'''
+
+class AssistantMessage(Markdown):
+    DEFAULT_CSS = '''
+    AssistantMessage {
+        margin: 0 0 1 0;
+        padding: 0 1;
+        border-left: thick $accent;
+    }
+    '''</code></pre>
+        <div class="mockup">── you ──
+what is the status of the build?
+
+█ The build is currently passing on main…
+█ Let me show the recent runs:</div>
+        <p class="tradeoff"><strong>Pros:</strong> Inverts the hierarchy explicitly — assistant becomes the focal element. &middot; <strong>Cons:</strong> A wide `█` rail on every assistant reply is still heavy; you've moved the problem, not solved it.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Keeps a boundary cue (single-cell rail) while restoring the assistant as the dominant reader-attention sink.</p>
+</section>
+<section id="item-9" class="issue high">
+  <h2><span class="badge high">High</span> <span>9. Resolve SearchBar keybinding conflict</span></h2>
+  <p class="meta">Where: <code>widgets/search_bar.py:27-30</code> vs <code>app.py:91-119</code> vs <code>modals/help_modal.py:32</code> · Screen S26</p>
+  <p class="why"><strong>Why it matters:</strong> SearchBar binds `ctrl+n` (next) and `ctrl+p` (prev). The App binds `ctrl+p` (Commands) and `ctrl+n` (New session) as global priority bindings. Help modal advertises `n / N` for next/prev. Three sources, zero agreement — pressing ctrl+p inside SearchBar will fire something inconsistent.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s26_search_bar.svg" alt="S26 — Ctrl+F search bar" loading="lazy"><figcaption>S26 — Ctrl+F search bar</figcaption>
+      <p>Search bar overlaying the conversation (when it renders, see C2). Bindings are silent but collide on actual use.</p>
+      <pre><code># widgets/search_bar.py:26-30
+BINDINGS = [
+    Binding("escape", "dismiss", "Dismiss", show=False),
+    Binding("ctrl+n", "next_match", "Next", show=False),   # collides with app new_session
+    Binding("ctrl+p", "prev_match", "Prev", show=False),   # collides with app command_palette
+]
+
+# modals/help_modal.py:32
+("Conversation", "n / N", "Next / prev search match"),   # nowhere implemented</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Use Enter / Shift+Enter inside SearchBar</h4>
+        <pre><code># widgets/search_bar.py
+BINDINGS = [
+    Binding("escape",     "dismiss",   "Dismiss",  show=False),
+    Binding("enter",       "next_match", "Next",     show=False),
+    Binding("shift+enter", "prev_match", "Prev",     show=False),
+]
+# And remove the on_input_changed live-search if it competes;
+# keep it for `update highlights as you type`.
+
+# modals/help_modal.py:32  — fix the documented binding
+("Search", "Enter / Shift+Enter", "Next / prev match"),</code></pre>
+        <div class="mockup">🔍 my query           3/12  enter next · shift+enter prev · esc close</div>
+        <p class="tradeoff"><strong>Pros:</strong> Idiomatic for fzf / browser search; eliminates global collision; one source of truth. &middot; <strong>Cons:</strong> Loses bare `n / N` shortcut that some vim users expect.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Make `n / N` work, register them as the only search keys</h4>
+        <pre><code># widgets/search_bar.py
+BINDINGS = [
+    Binding("escape", "dismiss",   "Dismiss", show=False),
+    Binding("n",      "next_match", "Next",    show=False),
+    Binding("N",      "prev_match", "Prev",    show=False),
+]
+# Caveat: SearchBar inherits Input — `n` would normally insert a char.
+# Override _on_key to suppress char insertion when bar is in
+# "navigate" submode (toggled via Esc after first Enter).</code></pre>
+        <div class="mockup">🔍 my query  [done — navigating]   3/12  n next · N prev · / edit · esc close</div>
+        <p class="tradeoff"><strong>Pros:</strong> Matches the existing Help modal copy; idiomatic for vim users. &middot; <strong>Cons:</strong> `n` is a printable char — needs a submode switch to stop insertion; complex state machine.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — F3 / Shift+F3 (Windows/IDE convention)</h4>
+        <pre><code>BINDINGS = [
+    Binding("escape", "dismiss",    "Dismiss", show=False),
+    Binding("f3",      "next_match", "Next",    show=False),
+    Binding("shift+f3","prev_match", "Prev",    show=False),
+]</code></pre>
+        <div class="mockup">🔍 my query           3/12  F3 next · Shift+F3 prev · esc close</div>
+        <p class="tradeoff"><strong>Pros:</strong> No collision with anything; familiar to IDE users. &middot; <strong>Cons:</strong> Function keys are inconsistent across terminal multiplexers and SSH chains; some terminals swallow F3.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Lowest-friction, terminal-portable, matches the bar's primary purpose (Enter to advance).</p>
+</section>
+<section id="item-10" class="issue high">
+  <h2><span class="badge high">High</span> <span>10. Add modal-stack backdrop dim</span></h2>
+  <p class="meta">Where: <code>modals/base.py:12-34</code> · Screen S55</p>
+  <p class="why"><strong>Why it matters:</strong> When ConfirmModal is pushed on top of SessionsModal the whole underlying frame goes black. No scrim, no dim, no peek of the modal beneath. Users lose context — were they in Sessions, or did the dialog come from somewhere else?</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s55_stacked_modal.svg" alt="S55 — ConfirmModal over SessionsModal; underlying modal vanishes" loading="lazy"><figcaption>S55 — ConfirmModal over SessionsModal; underlying modal vanishes</figcaption>
+      <p>A single ConfirmModal centred on a black backdrop with no trace of SessionsModal underneath.</p>
+      <pre><code># modals/base.py:12-34
+class BaseModal(ModalScreen):
+    DEFAULT_CSS = '''
+    BaseModal { align: center middle; }
+    BaseModal .dialog {
+        background: $surface;
+        border: round $primary;
+        ...
+    }
+    '''</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Translucent screen background (Textual alpha)</h4>
+        <pre><code>class BaseModal(ModalScreen):
+    DEFAULT_CSS = '''
+    BaseModal {
+        align: center middle;
+        background: $background 60%;     /* alpha — see underlying */
+    }
+    BaseModal .dialog {
+        background: $surface;
+        border: round $primary;
+        ...
+    }
+    '''</code></pre>
+        <div class="mockup">(underlying SessionsModal visible at ~40% behind a centred dimmed-out ConfirmModal)</div>
+        <p class="tradeoff"><strong>Pros:</strong> One CSS value; uses Textual's native alpha; works for any modal stack depth. &middot; <strong>Cons:</strong> Some terminals render alpha poorly (true-color downgrade) — fallback is just darker, not transparent.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Breadcrumb crumb above the active modal title</h4>
+        <pre><code># modals/base.py — auto-prepend a crumb of the parent modal's name
+class BaseModal(ModalScreen):
+    def compose_crumb(self) -&gt; str:
+        stack = [s for s in self.app.screen_stack if isinstance(s, BaseModal)]
+        names = [type(s).__name__.replace("Modal", "") for s in stack]
+        return " › ".join(names)
+
+# Each modal's compose() yields:
+yield Static(f"[dim]{self.compose_crumb()}[/]", classes="crumb")</code></pre>
+        <div class="mockup">┌────────────────────────────┐
+│ Sessions › Confirm         │  &lt;- breadcrumb in dim
+│                            │
+│ Delete this session?       │
+│                            │
+│        [Yes]  [No]         │
+└────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Works regardless of alpha support; explicit textual context. &middot; <strong>Cons:</strong> Doesn't restore the visual peek; only tells you the path.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Mini-preview of the parent modal at 40% opacity</h4>
+        <pre><code># On modal push, snapshot the parent's render and tile it as
+# background. Requires capturing the prior screen via
+# `self.app.screen_stack[-2].render()` and shrinking.
+
+class BaseModal(ModalScreen):
+    def on_mount(self):
+        parent = self.app.screen_stack[-2] if len(self.app.screen_stack) &gt; 1 else None
+        if parent:
+            mini = Static(parent.render_str_preview(), classes="parent-peek")
+            self.mount(mini)
+        # CSS:
+        # .parent-peek { dock: left; width: 40%; opacity: 0.4; }</code></pre>
+        <div class="mockup">┌─[ Sessions ]─┐   ┌── Confirm ───┐
+│ sess_a       │   │              │
+│ sess_b       │   │ Delete?      │
+│ sess_c       │   │  [Yes] [No]  │
+└──────────────┘   └──────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Maximum context preservation; the user literally sees what they came from. &middot; <strong>Cons:</strong> Requires render-to-text plumbing Textual doesn't expose well; expensive on large modals.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Single-line CSS, lowest blast radius, supports any stack depth. Combine with B's crumb later for textual confirmation.</p>
+</section>
+<section id="item-11" class="issue high">
+  <h2><span class="badge high">High</span> <span>11. Consolidate ThinkingBlock chevron + spinner</span></h2>
+  <p class="meta">Where: <code>widgets/thinking_block.py:64-75</code> · Screens S11, S13, S14, S27</p>
+  <p class="why"><strong>Why it matters:</strong> Header reads `▼  ⠼  Thinking…  0s  …  x to toggle`. ExpandChevron and SpinnerWidget both animate during the active phase — two indicators saying the same thing (active, expand to view). After done(), chevron stays `▶` and spinner hides; that's clean, but during streaming the user sees double motion.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s11_full_turn.svg" alt="S11 — `▼  ⠼  Thinking…` two animated glyphs" loading="lazy"><figcaption>S11 — `▼  ⠼  Thinking…` two animated glyphs</figcaption>
+      <img src="s27_thinking_expanded.svg" alt="S27 — chevron + spinner side-by-side" loading="lazy"><figcaption>S27 — chevron + spinner side-by-side</figcaption>
+      <p>ThinkingBlock header has [chevron `▼`][spinner `⠼`][label `Thinking… 0s`][hint `x to toggle`]. Both chevron and spinner animate.</p>
+      <pre><code># widgets/thinking_block.py:67-71
+with Horizontal(id="header", classes="thinking-header"):
+    yield ExpandChevron(expanded=True)
+    yield SpinnerWidget("dots")
+    yield Static("[bold]Thinking…[/]  [dim]0s[/]", id="label")
+    yield Static("[dim]x to toggle[/]", id="hint")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Hide chevron while thinking; show only after `done()`</h4>
+        <pre><code># widgets/thinking_block.py
+def compose(self) -&gt; ComposeResult:
+    with Horizontal(id="header"):
+        chev = ExpandChevron(expanded=True)
+        chev.display = False               # hidden until done()
+        yield chev
+        yield SpinnerWidget("dots")
+        yield Static("[bold]Thinking…[/]  [dim]0s[/]", id="label")
+        ...
+
+def done(self) -&gt; None:
+    ...
+    self.query_one(SpinnerWidget).display = False
+    self.query_one(ExpandChevron).display = True
+    self.query_one(ExpandChevron).expanded = False
+    ...</code></pre>
+        <div class="mockup">active:    ⠼  Thinking…   0s            x to toggle
+finished:  ▶  💭 12s — thought</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest: one indicator at any time; reuses existing widgets unchanged. &middot; <strong>Cons:</strong> The block isn't toggleable until thinking finishes — minor UX regression.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Merge into a single rotating-chevron widget</h4>
+        <pre><code># widgets/animated_chevron.py
+class AnimatedChevron(Static):
+    FRAMES_ACTIVE   = ("◐","◓","◑","◒")     # rotating disc while thinking
+    FRAMES_FINISHED = ("▶","▼")             # static after done
+
+    active:    reactive[bool] = reactive(True)
+    expanded:  reactive[bool] = reactive(True)
+
+    def on_mount(self):
+        self.set_interval(1/8, self._tick)
+
+    def _tick(self):
+        if self.active:
+            self._frame = (self._frame + 1) % 4
+            self.update(self.FRAMES_ACTIVE[self._frame])
+        else:
+            self.update(self.FRAMES_FINISHED[1 if self.expanded else 0])</code></pre>
+        <div class="mockup">active:    ◐ Thinking…   0s   x to toggle
+finished:  ▼ 💭 12s — thought    (toggle to ▶)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Visual continuity — the indicator morphs in place rather than swapping widgets. &middot; <strong>Cons:</strong> New custom widget to maintain; semantics 'active' + 'expanded' on one widget is novel.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Drop chevron entirely; the entire header row is the click target</h4>
+        <pre><code>with Horizontal(id="header"):
+    yield SpinnerWidget("dots")          # only while thinking
+    yield Static("[bold]Thinking…[/]  [dim]0s[/]", id="label")
+    # No chevron.
+
+# CSS: tint header background on hover to signal click target
+ThinkingBlock #header:hover { background: $boost; }</code></pre>
+        <div class="mockup">active:   ⠼ Thinking…  0s             (click row to expand/collapse)
+finished: 💭 12s — thought</div>
+        <p class="tradeoff"><strong>Pros:</strong> Pure simplicity; the spinner is the active indicator, the whole row is the affordance. &middot; <strong>Cons:</strong> Loses keyboard-discoverable affordance (no visible expand indicator); accessibility regression.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Cheapest, no new widgets, semantics stay clean: spinner = active, chevron = expandable history.</p>
+</section>
+<section id="item-12" class="issue high">
+  <h2><span class="badge high">High</span> <span>12. Color-code slash-dropdown category badges</span></h2>
+  <p class="meta">Where: <code>widgets/slash_dropdown.py:140-145</code> · Screens S02, S03, S34, S35</p>
+  <p class="why"><strong>Why it matters:</strong> Each row ends with `[$accent]{cat_label}[/]` — same colour for cmd / skill / tool. Categories carry meaning (a slash command is instant; a tool consumes turns; a skill changes context). Same colour means scanning everything is necessary.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s02_slash_dropdown.svg" alt="S02 — every category badge is `$accent`" loading="lazy"><figcaption>S02 — every category badge is `$accent`</figcaption>
+      <img src="s34_slash_filter_skill.svg" alt="S34 — skill rows visually identical to other categories" loading="lazy"><figcaption>S34 — skill rows visually identical to other categories</figcaption>
+      <p>All category badges render in the same accent colour, hugging the description text at variable offsets.</p>
+      <pre><code># widgets/slash_dropdown.py:140-145
+_CATEGORY_LABEL = {"cmd": "cmd", "skill": "skill", "tool": "tool"}
+
+def _populate(self, query: str) -&gt; None:
+    ...
+    cat_label = self._CATEGORY_LABEL.get(category, category)
+    label = f"[bold]{insertion}[/]  [dim]{desc}[/]  [$accent]{cat_label}[/]"
+    self.add_option(Option(label, id=insertion))</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Color-coded badges in a fixed right-aligned column</h4>
+        <pre><code>_CATEGORY_STYLE = {
+    "cmd":   ("cmd",   "$primary"),
+    "skill": ("skill", "$accent"),
+    "tool":  ("tool",  "$success"),
+}
+
+def _populate(self, query: str) -&gt; None:
+    ...
+    cat, color = self._CATEGORY_STYLE.get(category, ("?","$text-muted"))
+    insertion_pad = insertion.ljust(self._max_insertion_width)
+    label = (f"[bold]{insertion_pad}[/]  "
+             f"[dim]{desc:&lt;48}[/]  "
+             f"[{color}][ {cat:5} ][/]")
+    self.add_option(Option(label, id=insertion))</code></pre>
+        <div class="mockup">/help              show help                       [ cmd  ]   &lt;- primary blue
+/skill ci-setup    available                      [ skill]   &lt;- accent magenta
+/tool bash         runs shell commands            [ tool ]   &lt;- success green</div>
+        <p class="tradeoff"><strong>Pros:</strong> Pre-attentive category scan via colour; bracketed pill matches the modal-chrome style elsewhere. &middot; <strong>Cons:</strong> Hard-codes a colour-to-category mapping that must propagate to CommandModal and HelpModal for consistency.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Leading colored glyph instead of trailing badge</h4>
+        <pre><code>_CATEGORY_GLYPH = {
+    "cmd":   ("›", "$primary"),
+    "skill": ("◆", "$accent"),
+    "tool":  ("▸", "$success"),
+}
+
+glyph, color = self._CATEGORY_GLYPH.get(category, ("·","$text-muted"))
+label = f"[{color}]{glyph}[/] [bold]{insertion}[/]  [dim]{desc}[/]"</code></pre>
+        <div class="mockup">› /help              show help
+◆ /skill ci-setup    available
+▸ /tool bash         runs shell commands</div>
+        <p class="tradeoff"><strong>Pros:</strong> Even denser; the leading glyph is the badge. &middot; <strong>Cons:</strong> Glyph + color must be visually distinct on every theme; user needs to learn the mapping.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Three discrete sections in the dropdown</h4>
+        <pre><code># widgets/slash_dropdown.py — render with category headers
+def _populate(self, query: str) -&gt; None:
+    groups = {"cmd": [], "skill": [], "tool": []}
+    for insertion, desc, category in self.candidates:
+        if q and q not in (insertion + desc).lower(): continue
+        groups.setdefault(category, []).append((insertion, desc))
+
+    for cat, color in (("cmd","$primary"),("skill","$accent"),("tool","$success")):
+        if not groups[cat]: continue
+        self.add_option(Option(f"[{color}]── {cat.upper()} ──[/]", disabled=True))
+        for insertion, desc in groups[cat]:
+            self.add_option(Option(
+                f"  [bold]{insertion}[/]  [dim]{desc}[/]", id=insertion))</code></pre>
+        <div class="mockup">── CMD ──
+  /help                    show help
+── SKILL ──
+  /skill ci-setup          available
+── TOOL ──
+  /tool bash               runs shell commands</div>
+        <p class="tradeoff"><strong>Pros:</strong> Strongest categorical grouping; users see all categories present. &middot; <strong>Cons:</strong> Burns rows on headers; harder to fuzzy-filter to a single result.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Compact, color-coded, easy to scan, plays nicely with M11's column-rhythm fix; matches the badge style used in CommandModal.</p>
+</section>
+<section id="item-13" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>13. Flesh out CostModal</span></h2>
+  <p class="meta">Where: <code>modals/simple_modals.py:81-100</code> · Screen S23</p>
+  <p class="why"><strong>Why it matters:</strong> CostModal is the trust signal for paid users. Three labelled Static rows, no separators, no per-flavor breakdown, no rate, no session-vs-lifetime split. The empty dialog reads 'this feature isn't real'.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s23_cost_modal.svg" alt="S23 — three bare labelled rows, tiny dialog" loading="lazy"><figcaption>S23 — three bare labelled rows, tiny dialog</figcaption>
+      <p>Centred dialog ~5 rows tall on a dark background: `Input tokens: 0`, `Output tokens: 0`, `Total tokens: 0`. No ratio visualisation, no rates.</p>
+      <pre><code># modals/simple_modals.py:88-100
+def compose(self) -&gt; ComposeResult:
+    with Vertical(classes="dialog"):
+        yield Static("[bold]Cost &amp; Tokens[/]", classes="dialog-title")
+        tokens = self.cost.get("tokens", {}) if self.cost else {}
+        inp = tokens.get("input", 0)
+        out = tokens.get("output", 0)
+        total = tokens.get("total", inp + out)
+        yield Static(f"[dim]Input tokens:[/]  {inp:,}")
+        yield Static(f"[dim]Output tokens:[/] {out:,}")
+        yield Static(f"[dim]Total tokens:[/]  {total:,}")
+        if "usd" in (self.cost or {}):
+            yield Static(f"[dim]Estimated cost:[/] ${self.cost['usd']:.4f}")
+        yield Static("[dim]ESC close[/]", classes="dialog-hint")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Two-column layout: session vs lifetime with rate + ratio bar</h4>
+        <pre><code>CostModal .dialog { width: 80; height: 18; }
+CostModal #cost-cols { layout: horizontal; height: 1fr; }
+CostModal .col-session, CostModal .col-lifetime { width: 1fr; padding: 0 2; }
+CostModal .ratio-bar { height: 1; margin-top: 1; }
+
+with Horizontal(id="cost-cols"):
+    with Vertical(classes="col-session"):
+        yield Static("[bold]Session[/]")
+        yield Static(f"in  {inp:,}")
+        yield Static(f"out {out:,}")
+        yield Static(f"cached {cached:,}")
+        yield Static(f"[$success]${session_usd:.4f}[/]")
+    with Vertical(classes="col-lifetime"):
+        yield Static("[bold]Lifetime[/]")
+        yield Static(f"in  {life_in:,}")
+        yield Static(f"out {life_out:,}")
+        yield Static(f"[dim]rate[/] {tok_per_sec:.0f} tok/s · ${usd_per_min:.4f}/min")
+# ratio bar — 24-cell input vs output fill
+yield Static(self._ratio_bar(inp, out), classes="ratio-bar")</code></pre>
+        <div class="mockup">┌── Cost &amp; Tokens ────────────────────────────────────────────┐
+│ Session                       │ Lifetime                    │
+│ in   12,400                   │ in    1,240,000             │
+│ out   3,200                   │ out     320,000             │
+│ cached 1,800                  │ rate 42 tok/s · $0.18/min   │
+│ $0.0820                       │ Total: $12.50               │
+│                                                              │
+│ in ████████████████░░░░░░░ out                              │
+│                                                              │
+│                                                  ESC close   │
+└──────────────────────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Real signal: rate + ratio + lifetime context; users can decide whether to compact or continue. &middot; <strong>Cons:</strong> Backend must expose lifetime + rate; needs `cost` payload extension.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Sparkline (last-N turns) plus a single 3-line summary</h4>
+        <pre><code>CostModal .dialog { width: 70; height: 12; }
+
+# Add a tiny sparkline of token usage per-turn for last 20 turns
+from textual.widgets import Sparkline    # Textual has a Sparkline widget
+yield Static("[bold]Cost &amp; Tokens[/]", classes="dialog-title")
+yield Sparkline(data=self.cost.get("per_turn_tokens", []), id="cost-spark")
+yield Static(f"in {inp:,}   out {out:,}   total {total:,}")
+yield Static(f"[$success]${usd:.4f}[/]   [dim]≈ ${usd*60:.2f}/hr at current rate[/]")</code></pre>
+        <div class="mockup">┌── Cost &amp; Tokens ─────────────────────────────────┐
+│ ▁▂▅▆▄▂▃▆█▇▅▃▁▂▃▄▇█▄▃         &lt;- per-turn sparkline │
+│                                                   │
+│ in 12,400  out 3,200  total 15,600                │
+│ $0.082   ≈ $4.92/hr at current rate               │
+└───────────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> One striking visual signal (the sparkline); compact. &middot; <strong>Cons:</strong> Sparkline data needs the app to track per-turn token deltas; more plumbing.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Tabbed sub-views: Summary / Breakdown / By Flavor</h4>
+        <pre><code>with Vertical(classes="dialog"):
+    yield Static("[bold]Cost &amp; Tokens[/]", classes="dialog-title")
+    with TabbedContent():
+        with TabPane("Summary", id="t-sum"):
+            ...
+        with TabPane("Breakdown", id="t-break"):
+            yield Static("input tokens by source: …")
+            yield Static("cached prefix: …")
+        with TabPane("By flavor", id="t-flavor"):
+            yield Static("assistant: $0.04")
+            yield Static("operator:  $0.04")</code></pre>
+        <div class="mockup">┌── Cost &amp; Tokens ────────────────────────┐
+│ [ Summary | Breakdown | By flavor ]     │
+│                                          │
+│ … current tab content …                  │
+└──────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Future-proof for many cost dimensions (models, flavors, cached prefix). &middot; <strong>Cons:</strong> Heavy for V1; user needs to tab through to find what they want.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Direct: shows the two numbers that matter (now / lifetime) and the rate that predicts the future.</p>
+</section>
+<section id="item-14" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>14. Hide the V2 disabled group by default</span></h2>
+  <p class="meta">Where: <code>modals/command_modal.py:74-83</code> · Screens S06, S07</p>
+  <p class="why"><strong>Why it matters:</strong> Four disabled entries (Cron Jobs, Kanban, Browser, Plugins) live below `── V2 ──`. They occupy ~20% of the visible list and aren't actionable. Visual clutter, scroll cost, and discoverability of real actions suffers.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s06_command_modal.svg" alt="S06 — V2 group occupies ~20% of the list" loading="lazy"><figcaption>S06 — V2 group occupies ~20% of the list</figcaption>
+      <p>A `── V2 ──` group separator followed by four dimmed disabled rows trailing every default render of CommandModal.</p>
+      <pre><code># modals/command_modal.py:74-83
+# V2 (disabled)
+CommandEntry("v2_cron",    "Cron Jobs", "Scheduled tasks (v2)", "/cron",    "V2", enabled=False),
+CommandEntry("v2_kanban",  "Kanban",    "Board view (v2)",      "/kanban",  "V2", enabled=False),
+CommandEntry("v2_browser", "Browser",   "Screenshot view (v2)", "/browser", "V2", enabled=False),
+CommandEntry("v2_plugins", "Plugins",   "Plugin manager (v2)",  "/plugins", "V2", enabled=False),</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Hide unless filter contains 'v2'</h4>
+        <pre><code># modals/command_modal.py
+def _render_options(self, query: str) -&gt; list[Option]:
+    q = query.lower().strip()
+    show_v2 = "v2" in q
+    opts: list[Option] = []
+    last_group = None
+    for cmd in self.all_commands:
+        if cmd.group == "V2" and not show_v2:
+            continue
+        haystack = f"{cmd.label} {cmd.description} {cmd.keybind}".lower()
+        if q and q not in haystack:
+            continue
+        ...</code></pre>
+        <div class="mockup">(default)                  (filter='v2')
+  Sessions      ...        ── V2 ──
+  Memory        ...          Cron Jobs   (v2)
+  ...                         Kanban       (v2)
+                              ...</div>
+        <p class="tradeoff"><strong>Pros:</strong> One-line filter check; zero clutter in default view; power-users can opt-in. &middot; <strong>Cons:</strong> Discoverability of upcoming features drops to near-zero.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Footer 'Coming soon' line + tab-key reveal</h4>
+        <pre><code># CommandModal — add hint and BINDINGS
+BINDINGS = [..., Binding("shift+tab", "toggle_v2", show=False)]
+_show_v2 = reactive(False)
+
+def action_toggle_v2(self) -&gt; None:
+    self._show_v2 = not self._show_v2
+    self._rerender()
+
+# Add at bottom of dialog:
+yield Static("[dim]Shift+Tab: show roadmap (4 items)[/]", classes="dialog-hint")</code></pre>
+        <div class="mockup">(default)                              [Shift+Tab to show roadmap (4 items)]
+  ...                                  (after toggle)
+                                       ── V2 ──
+                                         Cron Jobs   (v2)
+                                         Kanban      (v2)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Roadmap stays discoverable; hidden behind one keystroke. &middot; <strong>Cons:</strong> Extra binding to remember; ambient hint takes a row.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Move V2 entries to the Help modal's footer</h4>
+        <pre><code># command_modal.py — delete the V2 entries from default_commands()
+# help_modal.py — append a 'Coming in V2' section
+_ROADMAP = [
+    ("Cron Jobs",   "Scheduled tasks"),
+    ("Kanban",      "Board view"),
+    ("Browser",     "Screenshot view"),
+    ("Plugins",     "Plugin manager"),
+]
+# In HelpModal.compose, after the keybindings table:
+yield Static("[bold]Coming in V2[/]")
+for name, desc in _ROADMAP:
+    yield Static(f"  [dim]{name}[/] — {desc}")</code></pre>
+        <div class="mockup">HelpModal:
+   …
+   Coming in V2
+     Cron Jobs   — Scheduled tasks
+     Kanban      — Board view
+     ...</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest CommandModal; roadmap lives where users go for info, not where they go to act. &middot; <strong>Cons:</strong> Disconnect between the two modals; user needs to know to look in Help.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Trivial change with the biggest UX win; the 'v2' filter remains a power-user escape hatch.</p>
+</section>
+<section id="item-15" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>15. Replace generic `empty` in MemoryModal with store-specific guidance</span></h2>
+  <p class="meta">Where: <code>modals/memory_modal.py:46-55</code> · Screens S17, S39</p>
+  <p class="why"><strong>Why it matters:</strong> Empty state is `[dim]empty[/]`. No guidance, no seeding command, no docs link. The same word is shown for two semantically distinct stores (agent ≠ user). First-run users see 'empty' twice and learn nothing about what should go there.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s39_memory_modal_empty.svg" alt="S39 — both tabs show plain `[dim]empty[/]`" loading="lazy"><figcaption>S39 — both tabs show plain `[dim]empty[/]`</figcaption>
+      <img src="s17_memory_modal.svg" alt="S17 — populated state for comparison" loading="lazy"><figcaption>S17 — populated state for comparison</figcaption>
+      <p>Both Agent Memory and User Profile tabs render an `0 / limit chars (0%)` header followed by the literal text `empty`.</p>
+      <pre><code># modals/memory_modal.py:46-55
+def _render_store(self, entries: list[str], limit: int, store: str) -&gt; ComposeResult:
+    total_chars = sum(len(e) for e in entries)
+    pct = (total_chars / limit) * 100 if limit else 0
+    color = "$success" if pct &lt; 75 else ("$warning" if pct &lt; 90 else "$error")
+    yield Static(
+        f"[{color}]{total_chars:,} / {limit:,} chars  ({pct:.0f}%)[/]",
+        classes="memory-content",
+    )
+    body = "\n\n".join(f"§ {e}" for e in entries) if entries else "[dim]empty[/]"
+    yield Static(body, classes="memory-content")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Per-store onboarding copy + example command</h4>
+        <pre><code>_EMPTY_COPY = {
+    "agent": (
+        "Agent memory captures facts the agent should remember across "
+        "sessions (project conventions, tool prefs).\n\n"
+        "Seed it from chat:  [bold]/memory add "fact"[/]"
+    ),
+    "user": (
+        "User profile records preferences about [bold]you[/] "
+        "(name, timezone, communication style).\n\n"
+        "Seed it from chat:  [bold]/user add "preference"[/]"
+    ),
+}
+
+body = ("\n\n".join(f"§ {e}" for e in entries) if entries
+        else f"[dim italic]{_EMPTY_COPY.get(store, 'empty')}[/]")
+yield Static(body, classes="memory-content")</code></pre>
+        <div class="mockup">(Agent tab empty)
+   0 / 2,200 chars  (0%)
+
+   Agent memory captures facts the agent should remember across
+   sessions (project conventions, tool prefs).
+
+   Seed it from chat:  /memory add "fact"</div>
+        <p class="tradeoff"><strong>Pros:</strong> One dict; teaches the exact command; per-store voice. &middot; <strong>Cons:</strong> More text; if backend exposes a 'seed memory' modal action later, this copy will drift.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Empty-state with a CTA button that opens an input prompt</h4>
+        <pre><code>if not entries:
+    yield Static(f"[dim italic]{_EMPTY_COPY[store]}[/]")
+    yield Button(f"Add {store} entry…", id=f"add-{store}", variant="primary")
+
+def on_button_pressed(self, event):
+    if event.button.id.startswith("add-"):
+        store = event.button.id.removeprefix("add-")
+        self.dismiss(("seed", store))</code></pre>
+        <div class="mockup">(Agent tab empty)
+   0 / 2,200 chars  (0%)
+
+   Agent memory captures facts ...
+
+   [ Add agent entry… ]</div>
+        <p class="tradeoff"><strong>Pros:</strong> Direct action button; matches gh-dash's empty-state pattern. &middot; <strong>Cons:</strong> Needs an actual add-memory flow plumbed through the modal; deeper change.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Suppress empty content; only show the percentage bar + hint footer</h4>
+        <pre><code>yield Static(
+    f"[{color}]{total_chars:,} / {limit:,} chars[/]",
+    classes="memory-content",
+)
+# No body widget when empty — just a quieter inline hint
+if not entries:
+    yield Static(
+        f"[dim]No {store} entries yet · /memory add to seed[/]",
+        classes="dialog-hint",
+    )
+else:
+    yield Static("\n\n".join(f"§ {e}" for e in entries),
+                 classes="memory-content")</code></pre>
+        <div class="mockup">(Agent tab empty)
+   0 / 2,200 chars
+
+   No agent entries yet · /memory add to seed</div>
+        <p class="tradeoff"><strong>Pros:</strong> Minimal; doesn't dominate; matches the rest of the modal's hint style. &middot; <strong>Cons:</strong> Lighter teaching value than A; doesn't explain *what* goes in agent vs user.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Empty states are where users learn the product; the extra two lines pay back across every first-run.</p>
+</section>
+<section id="item-16" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>16. Move DebugModal buttons to a dialog footer</span></h2>
+  <p class="meta">Where: <code>modals/debug_modal.py:28-61</code> · Screen S22</p>
+  <p class="why"><strong>Why it matters:</strong> Filter input (`1fr`) plus three buttons (`Pause (p)`, `Clear (ctrl+l)`, `Copy (ctrl+y)`) on one Horizontal row crops button labels and adds the floating `▔`/`▁` shadow rows. The visual rhythm clashes with the calm RichLog below.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s22_debug_modal.svg" alt="S22 — filter input + 3 buttons all on one row" loading="lazy"><figcaption>S22 — filter input + 3 buttons all on one row</figcaption>
+      <p>A 3-row band at top: filter input on the left, three buttons stacked horizontally on the right, button shadow rows visible above and below.</p>
+      <pre><code># modals/debug_modal.py:28-35, 52-61
+DEFAULT_CSS = '''
+DebugModal #filter-row { height: 3; }
+DebugModal #filter { width: 1fr; }
+DebugModal Button { margin-left: 1; }
+...
+'''
+with Horizontal(id="filter-row"):
+    yield Input(placeholder="Filter by event type…", id="filter")
+    yield Button("Pause (p)",      id="pause-btn", variant="warning")
+    yield Button("Clear (ctrl+l)", id="clear-btn")
+    yield Button("Copy (ctrl+y)",  id="copy-btn",  variant="primary")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Footer-style action row (single Horizontal, right-aligned)</h4>
+        <pre><code># modals/debug_modal.py
+DEFAULT_CSS = '''
+DebugModal #filter-row { height: 1; }   /* input only */
+DebugModal #filter     { width: 1fr; border: round $panel; }
+DebugModal #footer     { dock: bottom; height: 1; }
+DebugModal #footer Static { color: $text-muted; }
+'''
+def compose(self):
+    with Vertical(classes="dialog"):
+        yield Static("[bold]Debug · raw SSE event log[/]", classes="dialog-title")
+        yield Input(placeholder="Filter by event type…", id="filter")
+        yield Static("0 events buffered · live", id="event-counts")
+        yield RichLog(id="event-log")
+        with Horizontal(id="footer"):
+            yield Static("[dim]p pause · ctrl+l clear · ctrl+y copy · esc close[/]")</code></pre>
+        <div class="mockup">┌── Debug · raw SSE event log ──────────────────────────────┐
+│ Filter by event type…                                     │
+│ 12 events buffered · live                                 │
+│ 0.04  [assistant   ]  agent_chunk   {...}                 │
+│ 0.06  [assistant   ]  thinking      {...}                 │
+│ ...                                                       │
+│ p pause · ctrl+l clear · ctrl+y copy · esc close          │
+└────────────────────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> No button shadows; matches every other modal's hint-line footer; keys are the actions. &middot; <strong>Cons:</strong> No mouse-clickable buttons (keyboard-only).</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Compact button bar without shadow (icon-style)</h4>
+        <pre><code>DebugModal Button {
+    height: 1; min-width: 5;
+    background: $surface;
+    border: none;
+}
+DebugModal Button:hover { background: $boost; }
+
+yield Button("⏸", id="pause-btn")
+yield Button("⌫", id="clear-btn")
+yield Button("⧉", id="copy-btn")</code></pre>
+        <div class="mockup">┌── Debug · raw SSE event log ──────────────────────────────┐
+│ Filter…                                  ⏸  ⌫  ⧉       │
+│ ...                                                       │
+└────────────────────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Keeps mouse-clickable affordance, removes visual noise. &middot; <strong>Cons:</strong> Glyph-only buttons need a tooltip; not screen-reader friendly out of the box.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Move toggle controls into a collapsible header</h4>
+        <pre><code># Add a third row only when user presses `?`
+# By default just show: title, filter, event-counts, log.
+# On `?`: show pause / clear / copy buttons below counts.
+BINDINGS = [
+    Binding("question_mark", "toggle_actions", "Actions", show=True),
+    ...
+]
+_show_actions: reactive[bool] = reactive(False)
+
+def action_toggle_actions(self) -&gt; None:
+    self._show_actions = not self._show_actions
+    self.query_one("#actions").display = self._show_actions</code></pre>
+        <div class="mockup">(default)              (after `?`)
+┌─ Debug ──────┐      ┌─ Debug ──────┐
+│ Filter…      │      │ Filter…      │
+│ events…      │      │ events…      │
+│ log…         │      │ [Pause][Clear][Copy] │
+└──────────────┘      │ log…         │
+                      └──────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Default view is calm; controls available on demand. &middot; <strong>Cons:</strong> Hides documented bindings until toggled; first-run users won't know they exist.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Calmer default look, matches other modals' chrome, keyboard-first matches the modal's debugging audience.</p>
+</section>
+<section id="item-17" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>17. Add scroll affordance + group headers to HelpModal</span></h2>
+  <p class="meta">Where: <code>modals/help_modal.py:43-57</code> · Screen S16</p>
+  <p class="why"><strong>Why it matters:</strong> `DataTable(zebra_stripes=True, cursor_type="none")` + `height: auto` plus 27 rows. On small terminals (e.g. 24-row), the table exceeds the modal. No focused-row indicator (cursor disabled), no scrollbar styling, no `↑↓ to scroll` hint — users won't realise more content is below the fold.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s16_help_modal.svg" alt="S16 — DataTable with `cursor_type=none`" loading="lazy"><figcaption>S16 — DataTable with `cursor_type=none`</figcaption>
+      <p>A zebra-striped table with three columns (Group, Key, Action) and no cursor. Scroll is implicit and invisible.</p>
+      <pre><code># modals/help_modal.py:43-57
+class HelpModal(BaseModal):
+    DEFAULT_CSS = '''
+    HelpModal .dialog { width: 70; height: 90%; }
+    HelpModal DataTable { height: auto; }
+    '''
+    def compose(self) -&gt; ComposeResult:
+        with Vertical(classes="dialog"):
+            yield Static("[bold]Keyboard Shortcuts[/]", classes="dialog-title")
+            table: DataTable = DataTable(zebra_stripes=True, cursor_type="none")
+            table.add_columns("Group", "Key", "Action")
+            for group, key, action in _KEYBINDINGS:
+                table.add_row(group, f"[bold]{key}[/]", action)
+            yield table
+            yield Static("[dim]ESC to close[/]", classes="dialog-hint")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Enable cursor + scroll hint + scroll-bar styling</h4>
+        <pre><code>class HelpModal(BaseModal):
+    DEFAULT_CSS = '''
+    HelpModal .dialog { width: 70; height: 90%; }
+    HelpModal DataTable {
+        height: 1fr;
+        scrollbar-size: 1 1;
+    }
+    HelpModal DataTable &gt; .datatable--cursor {
+        background: $boost;
+    }
+    '''
+    def compose(self) -&gt; ComposeResult:
+        with Vertical(classes="dialog"):
+            yield Static("[bold]Keyboard Shortcuts[/]", classes="dialog-title")
+            table = DataTable(zebra_stripes=True, cursor_type="row")
+            table.cursor_foreground_priority = "renderable"
+            table.add_columns("Group", "Key", "Action")
+            for group, key, action in _KEYBINDINGS:
+                table.add_row(group, f"[bold]{key}[/]", action)
+            yield table
+            yield Static("[dim]↑↓ scroll · / filter · ESC close[/]",
+                         classes="dialog-hint")</code></pre>
+        <div class="mockup">┌── Keyboard Shortcuts ────────────────────────────────┐
+│ Group        | Key          | Action                │
+│ Global       | ctrl+p       | Command Modal          │
+│ ░Global░░░░░░░|░ctrl+s░░░░░░░|░Sessions░░░░░░░░░░░░░│  &lt;- cursor row
+│ Global       | ctrl+m       | Memory                 │
+│ ...                                                 ▼│  &lt;- scrollbar
+│ ↑↓ scroll · / filter · ESC close                     │
+└──────────────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Minimum diff; users see the cursor + scroll affordance immediately. &middot; <strong>Cons:</strong> Still a wall of rows on tiny terminals; just-scrollable, not just-readable.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Replace DataTable with grouped Static blocks (per-group section)</h4>
+        <pre><code>from itertools import groupby
+class HelpModal(BaseModal):
+    DEFAULT_CSS = '''
+    HelpModal .dialog { width: 70; height: 90%; }
+    HelpModal .group-title { color: $primary; text-style: bold; margin-top: 1; }
+    HelpModal .kb-row { padding: 0 2; }
+    '''
+    def compose(self) -&gt; ComposeResult:
+        with Vertical(classes="dialog"):
+            yield Static("[bold]Keyboard Shortcuts[/]", classes="dialog-title")
+            with VerticalScroll():
+                for group, items in groupby(_KEYBINDINGS, key=lambda r: r[0]):
+                    yield Static(group.upper(), classes="group-title")
+                    for _, key, action in items:
+                        yield Static(f"[bold]{key:&lt;14}[/]  {action}",
+                                     classes="kb-row")
+            yield Static("[dim]↑↓ scroll · ESC close[/]", classes="dialog-hint")</code></pre>
+        <div class="mockup">┌── Keyboard Shortcuts ──────────────────────────┐
+│ GLOBAL                                          │
+│   ctrl+p         Command Modal                  │
+│   ctrl+s         Sessions                       │
+│   ...                                           │
+│ CONVERSATION                                    │
+│   ↑ ↓ PgUp PgDn  Scroll                         │
+│ ...                                             │
+└─────────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Scanable by group; cleaner than a 3-column table on narrow terminals. &middot; <strong>Cons:</strong> Drops the table's alignment guarantees; longer to render.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Filter-as-you-type Input above the table</h4>
+        <pre><code>class HelpModal(BaseModal):
+    def compose(self):
+        with Vertical(classes="dialog"):
+            yield Static("[bold]Keyboard Shortcuts[/]", classes="dialog-title")
+            yield Input(placeholder="Filter…", id="kb-filter")
+            table = DataTable(zebra_stripes=True, cursor_type="row")
+            table.add_columns("Group", "Key", "Action")
+            self._table = table
+            yield table
+            yield Static("[dim]Type to filter · ESC close[/]", classes="dialog-hint")
+
+    def on_mount(self):
+        self._rerender("")
+
+    def on_input_changed(self, ev):
+        self._rerender(ev.value)
+
+    def _rerender(self, q: str):
+        self._table.clear()
+        q = q.lower()
+        for group, key, action in _KEYBINDINGS:
+            if q and q not in f"{group} {key} {action}".lower():
+                continue
+            self._table.add_row(group, f"[bold]{key}[/]", action)</code></pre>
+        <div class="mockup">┌── Keyboard Shortcuts ──────────────────────────┐
+│ Filter… session                                 │
+│ Global       | ctrl+s   | Sessions               │
+│ Sessions     | r/f/e/d  | Resume/Fork/Edit/Delete│
+│ Type to filter · ESC close                       │
+└──────────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Easiest discovery for known-actions; cuts the scroll problem entirely. &middot; <strong>Cons:</strong> Extra input + state; more code than the cursor fix.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Cheapest fix that resolves the silent-truncation problem; B/C are wins layered on top later.</p>
+</section>
+<section id="item-18" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>18. Replace hardcoded `—` model placeholder</span></h2>
+  <p class="meta">Where: <code>widgets/header.py:31,66</code> · Screens S01, S30–S33</p>
+  <p class="why"><strong>Why it matters:</strong> `model = reactive("—")` and never updates unless user opens Switch Model. Header reads `NX01  mock · — · ctrl+p …` — the em-dash reads as content, not 'unset'. The header always looks half-loaded.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s01_boot.svg" alt="S01 — header reads `mock · —`" loading="lazy"><figcaption>S01 — header reads `mock · —`</figcaption>
+      <img src="s33_header_connected.svg" alt="S33 — connected but still `—`" loading="lazy"><figcaption>S33 — connected but still `—`</figcaption>
+      <p>Brand row shows `NX01  mock  ·  —` where `—` is the literal placeholder value of the `model` reactive.</p>
+      <pre><code># widgets/header.py:30-32, 66
+domain: reactive[str] = reactive("disconnected")
+model:  reactive[str] = reactive("—")
+connected: reactive[bool] = reactive(False)
+...
+return f"[bold]NX01[/bold]  {domain}  [dim]·[/]  [dim]{self.model}[/]"</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Empty default + dim placeholder render</h4>
+        <pre><code># widgets/header.py
+model: reactive[str] = reactive("")
+
+def _brand_text(self) -&gt; str:
+    ...
+    model_part = (f"  [dim]·[/]  [dim italic]no model selected[/]"
+                  if not self.model
+                  else f"  [dim]·[/]  [dim]{self.model}[/]")
+    return f"[bold]NX01[/bold]  {domain}{model_part}"</code></pre>
+        <div class="mockup">NX01  cyan.api  ·  no model selected         &lt;- italic dim
+NX01  cyan.api  ·  gpt-4o                     &lt;- set state</div>
+        <p class="tradeoff"><strong>Pros:</strong> Tiny diff; semantically correct; users understand 'unset'. &middot; <strong>Cons:</strong> Doesn't auto-fix — header is still 'empty-looking' until something sets a model.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Auto-pick first model on connect</h4>
+        <pre><code># app.py — after successful flavor discovery
+async def _bootstrap(self) -&gt; None:
+    ...
+    self.query_one(AppHeader).connected = True
+    self.run_worker(self._auto_pick_model(), exclusive=False)
+    ...
+
+async def _auto_pick_model(self) -&gt; None:
+    try:
+        resp = await self.client._client.get("/v1/models")
+        models = [m.get("id","") for m in resp.json().get("data",[])]
+        if models:
+            self.query_one(AppHeader).model = models[0]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("auto-pick model failed: %s", exc)</code></pre>
+        <div class="mockup">(boot)        NX01  cyan.api  ·  (loading…)
+(2s later)   NX01  cyan.api  ·  gpt-4o</div>
+        <p class="tradeoff"><strong>Pros:</strong> Steady state is never blank; one round-trip is fast. &middot; <strong>Cons:</strong> Imposes a choice the user didn't make; needs cleanup if no models endpoint exists.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Drop the model field from the header entirely</h4>
+        <pre><code># widgets/header.py — remove model column; show only in CostModal / ConfigModal
+def _brand_text(self) -&gt; str:
+    if self.auth_failed:
+        domain = f"[$error]{self.domain} (auth failed)[/]"
+    elif self.reconnecting:
+        domain = f"[$warning]{self.domain} (reconnecting)[/]"
+    elif self.connected:
+        domain = f"[cyan]{self.domain}[/]"
+    else:
+        domain = f"[$error]{self.domain} (offline)[/]"
+    return f"[bold]NX01[/bold]  {domain}"</code></pre>
+        <div class="mockup">NX01  cyan.api</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest header; model is a one-modal-away concern, not a header concern. &middot; <strong>Cons:</strong> Loses model context at a glance; users have to open a modal to see it.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A + B &mdash; Combine: A is the fallback text; B fills it in automatically; both ship together cheaply.</p>
+</section>
+<section id="item-19" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>19. Move auth-failed suffix to a toast</span></h2>
+  <p class="meta">Where: <code>widgets/header.py:58-66</code> · Screen S31</p>
+  <p class="why"><strong>Why it matters:</strong> `[$error]{domain} (auth failed — check API key)[/]` at 110 cols visually butts against the `ctrl+p cmd · …` hints. The header looks cramped exactly when something has gone wrong — bad first impression.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s31_header_auth_failed.svg" alt="S31 — long red parenthetical butts the right-edge hints" loading="lazy"><figcaption>S31 — long red parenthetical butts the right-edge hints</figcaption>
+      <p>Domain text wraps into the spacer cell; binding hints get pushed to the very right edge, sometimes overflowing.</p>
+      <pre><code># widgets/header.py:56-66
+def _brand_text(self) -&gt; str:
+    if self.auth_failed:
+        domain = f"[$error]{self.domain} (auth failed — check API key)[/]"
+    elif self.reconnecting:
+        domain = f"[$warning]{self.domain} (reconnecting)[/]"
+    ...
+    return f"[bold]NX01[/bold]  {domain}  [dim]·[/]  [dim]{self.model}[/]"</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Short suffix `AUTH` in header; full text in a toast</h4>
+        <pre><code>def _brand_text(self) -&gt; str:
+    if self.auth_failed:
+        domain = f"[$error]{self.domain}[/]  [bold $error reverse] AUTH [/]"
+    elif self.reconnecting:
+        domain = f"[$warning]{self.domain}[/]  [bold $warning reverse] RECON [/]"
+    elif self.connected:
+        domain = f"[cyan]{self.domain}[/]"
+    else:
+        domain = f"[$error]{self.domain}[/]  [bold $error reverse] OFFLINE [/]"
+    ...
+
+# app.py — on auth failure
+self.notify("Authentication failed (401). Check --api-key.", severity="error", timeout=8)
+# (already exists; just remove the long header suffix)</code></pre>
+        <div class="mockup">NX01  cyan.api  [ AUTH ]  ·  gpt-4o          ctrl+p cmd · ?</div>
+        <p class="tradeoff"><strong>Pros:</strong> Compact, readable, no header crowding; severity badge style scales. &middot; <strong>Cons:</strong> `AUTH` is jargon-y; needs the toast for full context.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Hide right-hand hints when error suffix present</h4>
+        <pre><code># widgets/header.py
+def _hints_text(self) -&gt; str:
+    if self.auth_failed or not self.connected:
+        return ""
+    return "[dim]ctrl+p cmd · ctrl+s sessions · ctrl+m memory · ? help[/]"</code></pre>
+        <div class="mockup">NX01  cyan.api (auth failed — check API key)  ·  gpt-4o</div>
+        <p class="tradeoff"><strong>Pros:</strong> No new copy; preserves the existing long suffix. &middot; <strong>Cons:</strong> Loses the global discovery hints exactly when users may be confused.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Move connection state to its own row above the brand row</h4>
+        <pre><code># widgets/header.py — make AppHeader two rows when not connected
+class AppHeader(Vertical):
+    DEFAULT_CSS = '''
+    AppHeader { dock: top; height: auto; background: $surface; }
+    AppHeader.connected { height: 1; }
+    AppHeader.disconnected { height: 2; }
+    '''
+    def compose(self):
+        yield Static("", id="banner")     # only visible when disconnected
+        with Horizontal(id="brand-row"):
+            yield Static(self._brand_text(), id="brand")
+            yield Static("", id="spacer")
+            yield Static(self._hints_text(), id="hints")</code></pre>
+        <div class="mockup">(connected)
+NX01  cyan.api  ·  gpt-4o                       ctrl+p cmd · …
+
+(auth-failed — 2 rows)
+AUTH FAILED — Check --api-key (server returned 401).
+NX01  cyan.api  ·  gpt-4o                       ctrl+p cmd · …</div>
+        <p class="tradeoff"><strong>Pros:</strong> Maximum legibility for the error condition. &middot; <strong>Cons:</strong> Header grows; conversation area shrinks under common failure conditions.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Smallest visual change, leverages the existing notify() that already fires; uniform `AUTH` / `RECON` / `OFFLINE` badge family.</p>
+</section>
+<section id="item-20" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>20. Differentiate ConfirmModal dangerous variant</span></h2>
+  <p class="meta">Where: <code>modals/confirm_modal.py:31-43</code> · Screens S21, S41</p>
+  <p class="why"><strong>Why it matters:</strong> Dangerous variant only changes title colour (`bold red`) and the Yes-button variant. Border, body styling, button order, dimensions are identical. The destructive nature of `Delete this session?` is conveyed entirely by one red word — easy to miss when scanning fast.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s21_confirm_modal.svg" alt="S21 — dangerous variant" loading="lazy"><figcaption>S21 — dangerous variant</figcaption>
+      <img src="s41_confirm_modal_benign.svg" alt="S41 — benign variant (identical chrome)" loading="lazy"><figcaption>S41 — benign variant (identical chrome)</figcaption>
+      <p>Same `border: round $primary`, same `[Yes] [No]` order with Yes focused/highlighted, only the title color differs.</p>
+      <pre><code># modals/confirm_modal.py:31-43
+def compose(self) -&gt; ComposeResult:
+    with Vertical(classes="dialog"):
+        yield Static(
+            f"[bold {'red' if self.dangerous else 'yellow'}]Confirm[/]",
+            classes="dialog-title",
+        )
+        yield Static(self.prompt)
+        with Horizontal():
+            yield Button("Yes (y)", id="yes",
+                         variant="success" if not self.dangerous else "error")
+            yield Button("No (n)",  id="no")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Red border + swap button order + `cannot be undone` prefix</h4>
+        <pre><code>DEFAULT_CSS = '''
+ConfirmModal .dialog            { width: 50; }
+ConfirmModal .dialog.danger     { border: round $error; }
+'''
+
+def compose(self) -&gt; ComposeResult:
+    with Vertical(classes=f"dialog {'danger' if self.dangerous else ''}"):
+        yield Static(
+            f"[bold {'red' if self.dangerous else 'yellow'}]Confirm[/]",
+            classes="dialog-title",
+        )
+        yield Static(self.prompt)
+        if self.dangerous:
+            yield Static("[$error]This cannot be undone.[/]")
+        with Horizontal():
+            if self.dangerous:
+                yield Button("No (n)",  id="no",  variant="default")  # focus default
+                yield Button("Yes (y)", id="yes", variant="error")
+            else:
+                yield Button("Yes (y)", id="yes", variant="success")
+                yield Button("No (n)",  id="no")
+
+def on_mount(self) -&gt; None:
+    if self.dangerous:
+        self.query_one("#no", Button).focus()</code></pre>
+        <div class="mockup">┌── Confirm ──────────────────────────────┐  &lt;- red border
+│ Delete this session?                    │
+│ This cannot be undone.                  │
+│                                          │
+│        [ No (n) ]   [ Yes (y) ]         │  &lt;- No focused
+└──────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Real escalation: border, copy, focus order all change; matches the OS-level danger-dialog idiom. &middot; <strong>Cons:</strong> More CSS + compose branching, but contained to one modal.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Type-the-confirmation pattern</h4>
+        <pre><code># ConfirmModal — accept a `confirm_word` arg for dangerous variant
+def __init__(self, prompt, dangerous=False, confirm_word=None, **kw):
+    super().__init__(**kw)
+    self.prompt = prompt; self.dangerous = dangerous
+    self.confirm_word = confirm_word or "yes"
+
+def compose(self):
+    with Vertical(classes="dialog"):
+        yield Static(f"[bold {'red' if self.dangerous else 'yellow'}]Confirm[/]", classes="dialog-title")
+        yield Static(self.prompt)
+        if self.dangerous:
+            yield Static(f"Type [bold]{self.confirm_word}[/] to confirm:")
+            yield Input(id="confirm-input")
+        with Horizontal():
+            yield Button("Confirm", id="yes",
+                         variant="error" if self.dangerous else "success",
+                         disabled=self.dangerous)
+            yield Button("Cancel",  id="no")</code></pre>
+        <div class="mockup">┌── Confirm ──────────────────────────────┐
+│ Delete this session?                    │
+│ Type 'yes' to confirm:                  │
+│   [_______]                             │
+│      [ Confirm (disabled) ]  [ Cancel ] │
+└──────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Highest friction for the rare dangerous case; nearly impossible to misclick. &middot; <strong>Cons:</strong> Disproportionate for low-stakes 'delete one session' actions.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Inline countdown before Yes becomes enabled (3s)</h4>
+        <pre><code>from textual.timer import Timer
+
+def on_mount(self) -&gt; None:
+    if self.dangerous:
+        self._countdown = 3
+        btn = self.query_one("#yes", Button)
+        btn.disabled = True
+        self._timer = self.set_interval(1.0, self._tick)
+
+def _tick(self) -&gt; None:
+    self._countdown -= 1
+    btn = self.query_one("#yes", Button)
+    if self._countdown &lt;= 0:
+        btn.label = "Yes (y)"
+        btn.disabled = False
+        self._timer.stop()
+    else:
+        btn.label = f"Yes ({self._countdown}…)"</code></pre>
+        <div class="mockup">┌── Confirm ──────────────────────────────┐
+│ Delete this session?                    │
+│ This cannot be undone.                  │
+│                                          │
+│ [ Yes (3…) (disabled) ]  [ No (n) ]    │   &lt;- counts down
+└──────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Forces pause; visible mechanism. &middot; <strong>Cons:</strong> Annoys experienced users; doesn't change much about visual hierarchy.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Standard danger pattern; clear visual + focus signal; ships in one modal file.</p>
+</section>
+<section id="item-21" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>21. Add a redundant top-of-pane state ribbon</span></h2>
+  <p class="meta">Where: <code>widgets/flavor_pane.py:23-34</code> · Screens S42–S45</p>
+  <p class="why"><strong>Why it matters:</strong> State is encoded only as a single-cell-thick border colour change around a ~190-cell-tall pane. With the StatusBar broken (C1), the only state signal is this thin border. Easily missed; bad for colour-vision-deficient users (red/green hard to distinguish for some). Glanceable state surfacing should be redundant — colour + text.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s42_pane_state_thinking.svg" alt="S42 — yellow border (1-cell thin)" loading="lazy"><figcaption>S42 — yellow border (1-cell thin)</figcaption>
+      <img src="s44_pane_state_tool_call.svg" alt="S44 — green border (subtle)" loading="lazy"><figcaption>S44 — green border (subtle)</figcaption>
+      <img src="s45_pane_state_error.svg" alt="S45 — red border (still subtle)" loading="lazy"><figcaption>S45 — red border (still subtle)</figcaption>
+      <p>Around the conversation pane, a 1-cell rounded border in yellow/blue/green/red depending on FlavorPane state class. No textual cue inside the pane.</p>
+      <pre><code># widgets/flavor_pane.py:23-34
+DEFAULT_CSS = '''
+FlavorPane           { border: round $panel; }
+FlavorPane.thinking  { border: round $warning; }
+FlavorPane.streaming { border: round $primary; }
+FlavorPane.tool_call { border: round $success; }
+FlavorPane.done      { border: round $success 30%; }
+FlavorPane.error     { border: round $error; }
+'''</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — One-row state ribbon docked above ConversationView</h4>
+        <pre><code># widgets/state_ribbon.py
+class StateRibbon(Static):
+    DEFAULT_CSS = '''
+    StateRibbon { dock: top; height: 1; background: $surface; padding: 0 1; }
+    StateRibbon.idle      { color: $text-muted; display: none; }
+    StateRibbon.thinking  { color: $warning;  background: $warning 10%; }
+    StateRibbon.streaming { color: $primary;  background: $primary 10%; }
+    StateRibbon.tool_call { color: $success;  background: $success 10%; }
+    StateRibbon.error     { color: $error;    background: $error 10%; }
+    '''
+    LABEL = {
+        AgentState.THINKING:  "⠋ Thinking…",
+        AgentState.STREAMING: "▌ Writing…",
+        AgentState.TOOL_CALL: "✻ Tool call running",
+        AgentState.DONE:      "✓ Done",
+        AgentState.ERROR:     "✗ Error — Esc to dismiss",
+    }
+
+# flavor_pane.py — set_state also updates ribbon
+def set_state(self, state: AgentState) -&gt; None:
+    super_classes()
+    self.query_one(StateRibbon).set_state(state)</code></pre>
+        <div class="mockup">╭─ FlavorPane ──────────────────────────────────────╮
+│ ⠋ Thinking…                                       │  &lt;- yellow tint ribbon
+│ user: how do I rotate the cluster?                │
+│ ...                                                │
+│                                                    │
+│ [chat input]                                       │
+╰────────────────────────────────────────────────────╯</div>
+        <p class="tradeoff"><strong>Pros:</strong> Glanceable text + colour; survives even when border is faint (small terminals); accessible. &middot; <strong>Cons:</strong> Burns one row in every state except IDLE.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Thicker top edge that always carries the state colour</h4>
+        <pre><code>/* CSS */
+FlavorPane.thinking  { border-top: heavy $warning; border: round $warning; }
+FlavorPane.streaming { border-top: heavy $primary; border: round $primary; }
+FlavorPane.tool_call { border-top: heavy $success; border: round $success; }
+FlavorPane.error     { border-top: heavy $error;   border: round $error;   }</code></pre>
+        <div class="mockup">▄▄▄▄▄▄▄▄▄▄▄▄▄ FlavorPane top edge (heavy) ▄▄▄▄▄▄▄▄▄▄▄▄
+│ user: how do I rotate the cluster?                  │
+│ ...                                                  │</div>
+        <p class="tradeoff"><strong>Pros:</strong> Single CSS rule; the existing border state machine grows a stronger top edge for free. &middot; <strong>Cons:</strong> No textual cue; still relies on colour discrimination.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Tab strip badge: append the state to the active tab's label</h4>
+        <pre><code># app.py — patch tab labels on every set_state
+def _refresh_tab_label(self, flavor: str, state: AgentState) -&gt; None:
+    tabs = self.query_one(TabbedContent)
+    label = flavor
+    if state == AgentState.THINKING:  label += "  ⠋"
+    elif state == AgentState.TOOL_CALL: label += "  ✻"
+    elif state == AgentState.ERROR: label += "  ✗"
+    elif state == AgentState.STREAMING: label += "  ▌"
+    tabs.get_tab(f"tab-{flavor}").label = label</code></pre>
+        <div class="mockup">┌ assistant  ⠋ ─┬ operator ───┐
+│                                │  (yellow tab label)
+</div>
+        <p class="tradeoff"><strong>Pros:</strong> Reuses existing tab strip; no new widget; visible from any flavor switch. &middot; <strong>Cons:</strong> Tab label flicker; some terminals dislike rapid label re-renders.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Most legible, most accessible, doesn't reverse-depend on colour; the burned row is the trade-off and worth it during active states.</p>
+</section>
+<section id="item-22" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>22. Sync ToolCallBlock chevron to `collapsed` reactive via watcher</span></h2>
+  <p class="meta">Where: <code>widgets/tool_call_block.py:177-186</code> · Screen S28</p>
+  <p class="why"><strong>Why it matters:</strong> On ERROR, `set_collapsed(False)` is called → `ExpandChevron.expanded = True` (→ `▼`). But S28 shows `▶` next to an expanded body. The chevron and the body's actual visibility have drifted. Either the watcher is racing the snapshot or the manual call missed. Inconsistency breaks the mental model — the chevron's promise should be the body's reality.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s28_tool_call_error.svg" alt="S28 — chevron `▶` despite error keeping body visible" loading="lazy"><figcaption>S28 — chevron `▶` despite error keeping body visible</figcaption>
+      <p>ToolCallBlock with an error state, body visible, but chevron displays the collapsed glyph `▶`.</p>
+      <pre><code># widgets/tool_call_block.py:177-186
+def set_collapsed(self, collapsed: bool) -&gt; None:
+    self.collapsed = collapsed
+    if collapsed: self.add_class("collapsed")
+    else:         self.remove_class("collapsed")
+    try:
+        self.query_one(ExpandChevron).expanded = not collapsed
+    except Exception:  # noqa: BLE001
+        pass</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Reactive watcher (single source of truth)</h4>
+        <pre><code># widgets/tool_call_block.py
+collapsed: reactive[bool] = reactive(False)
+
+def watch_collapsed(self, new: bool) -&gt; None:
+    if new: self.add_class("collapsed")
+    else:   self.remove_class("collapsed")
+    try:
+        self.query_one(ExpandChevron).expanded = not new
+    except Exception:  # noqa: BLE001
+        pass
+
+def set_collapsed(self, collapsed: bool) -&gt; None:
+    self.collapsed = collapsed     # triggers watch_collapsed
+
+def toggle_collapsed(self) -&gt; None:
+    self.collapsed = not self.collapsed
+
+# In watch_status, just set self.collapsed = True/False — no manual chevron poke.</code></pre>
+        <div class="mockup">(collapsed reactive flips → watch_collapsed fires → chevron + class update atomically)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Reactive is the single source of truth; impossible to drift; no manual chevron calls in business logic. &middot; <strong>Cons:</strong> Marginally more code; need to remove the inline `query_one(ExpandChevron)` pokes elsewhere.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Derive chevron from `collapsed` via a computed property</h4>
+        <pre><code># widgets/chevron.py — ExpandChevron tracks its parent's `collapsed`
+class ExpandChevron(Static):
+    def __init__(self, parent_widget=None, **kw):
+        super().__init__(**kw)
+        self._parent = parent_widget
+
+    def render(self):
+        if self._parent and getattr(self._parent, "collapsed", False):
+            return "▶"
+        return "▼"
+
+# In ToolCallBlock.compose:
+yield ExpandChevron(parent_widget=self)</code></pre>
+        <div class="mockup">(every refresh of the chevron looks up the parent's `collapsed` — never out of sync)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Even tighter binding; render method is pure. &middot; <strong>Cons:</strong> Cross-widget parent reference is brittle; harder to test in isolation.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Remove ExpandChevron entirely; let the CSS class show the state</h4>
+        <pre><code># widgets/tool_call_block.py — drop ExpandChevron from header
+with Horizontal(id="header"):
+    yield StarSpinner()
+    yield Static("○", id="icon")
+    yield Static(f"[bold]{self.tool}[/]", id="name")
+    ...
+# CSS already hides RichLog when .collapsed; visually the difference is the body.
+
+# Add an inline tag in the name label rebuilt on collapse change:
+def watch_collapsed(self, new: bool) -&gt; None:
+    name = self.query_one("#name", Static)
+    glyph = "▶" if new else "▼"
+    name.update(f"[dim]{glyph}[/] [bold]{self.tool}[/]")</code></pre>
+        <div class="mockup">(collapsed)  ▶ bash   ls -la                   ✓ 0.8s
+(expanded)  ▼ bash   ls -la                   ✓ 0.8s
+                ./README.md
+                ./pyproject.toml</div>
+        <p class="tradeoff"><strong>Pros:</strong> Removes a whole widget; one place to render the chevron glyph. &middot; <strong>Cons:</strong> Loses clickable chevron target; whole header row is the click affordance.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Reactive watchers are the standard fix for the drift class of bug; clean, testable, minimal diff.</p>
+</section>
+<section id="item-23" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>23. Align slash-dropdown insertion column to a max-width</span></h2>
+  <p class="meta">Where: <code>widgets/slash_dropdown.py:135-145</code> · Screens S02–S04, S34, S35</p>
+  <p class="why"><strong>Why it matters:</strong> `[bold]{insertion}[/]  [dim]{desc}[/]  [$accent]{cat}[/]` — variable-width insertion means descriptions begin at varying columns: `/help · show help` vs `/skill ci-setup · available`. The eye can't lock onto a column.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s02_slash_dropdown.svg" alt="S02 — descriptions start at varying columns" loading="lazy"><figcaption>S02 — descriptions start at varying columns</figcaption>
+      <img src="s03_slash_filtered.svg" alt="S03 — same problem when filtered" loading="lazy"><figcaption>S03 — same problem when filtered</figcaption>
+      <p>Each row's description starts at `len(insertion) + 2` from the left — the offset varies by 10+ cells across the visible list.</p>
+      <pre><code># widgets/slash_dropdown.py:135-145
+def _populate(self, query: str) -&gt; None:
+    self.clear_options()
+    q = query.lower().lstrip("/")
+    for entry in self.candidates:
+        insertion, desc, category = entry
+        hay = (insertion + " " + desc).lower()
+        if q and q not in hay: continue
+        cat_label = self._CATEGORY_LABEL.get(category, category)
+        label = f"[bold]{insertion}[/]  [dim]{desc}[/]  [$accent]{cat_label}[/]"
+        self.add_option(Option(label, id=insertion))</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Compute max-width across visible candidates; left-pad insertion</h4>
+        <pre><code>def _populate(self, query: str) -&gt; None:
+    self.clear_options()
+    q = query.lower().lstrip("/")
+    visible = [e for e in self.candidates
+               if not q or q in (e[0]+e[1]).lower()]
+    max_ins = max((len(e[0]) for e in visible), default=0)
+    max_ins = min(max_ins, 28)             # hard cap
+    for insertion, desc, category in visible:
+        cat_label = self._CATEGORY_LABEL.get(category, category)
+        ins_pad = insertion.ljust(max_ins)
+        label = (f"[bold]{ins_pad}[/]  "
+                 f"[dim]{desc[:48]:&lt;48}[/]  "
+                 f"[$accent]{cat_label}[/]")
+        self.add_option(Option(label, id=insertion))</code></pre>
+        <div class="mockup">/help              show help                       cmd
+/skill ci-setup    available                      skill
+/tool bash         runs shell commands            tool
+/memory add        add an entry to memory         cmd</div>
+        <p class="tradeoff"><strong>Pros:</strong> Fixed three-column rhythm; eye locks on; works with any candidate set. &middot; <strong>Cons:</strong> Padding glyphs are spaces; on narrow terminals (&lt; 60 cols) the row wraps.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Use Textual's DataTable instead of OptionList rows</h4>
+        <pre><code># widgets/slash_dropdown.py — refactor to DataTable
+class SlashDropdown(DataTable):
+    DEFAULT_CSS = '''
+    SlashDropdown { display: none; max-height: 8; }
+    SlashDropdown.visible { display: block; }
+    '''
+    def __init__(self, **kw):
+        super().__init__(show_header=False, cursor_type="row", **kw)
+        self.add_columns("insertion", "desc", "cat")
+
+    def _populate(self, query: str) -&gt; None:
+        self.clear()
+        for insertion, desc, category in self._filtered(query):
+            self.add_row(f"[bold]{insertion}[/]",
+                         f"[dim]{desc}[/]",
+                         f"[$accent]{category}[/]")</code></pre>
+        <div class="mockup">| /help            | show help                    | cmd   |
+| /skill ci-setup  | available                    | skill |
+| /tool bash       | runs shell commands          | tool  |</div>
+        <p class="tradeoff"><strong>Pros:</strong> True column layout, Textual handles widths; trivial to add sorting later. &middot; <strong>Cons:</strong> DataTable's interactions differ from OptionList (Enter to select differs); requires reworking key bindings.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Two-tier rendering: bold insertion on its own line, dim desc indented</h4>
+        <pre><code>def _populate(self, query: str) -&gt; None:
+    self.clear_options()
+    for insertion, desc, category in self._filtered(query):
+        label = (f"[bold]{insertion}[/]  [$accent dim]({category})[/]\n"
+                 f"  [dim]{desc}[/]")
+        self.add_option(Option(label, id=insertion))</code></pre>
+        <div class="mockup">/help                          (cmd)
+  show help
+/skill ci-setup                (skill)
+  available
+/tool bash                     (tool)
+  runs shell commands</div>
+        <p class="tradeoff"><strong>Pros:</strong> Each entry is a card; descriptions are full-width regardless of insertion length. &middot; <strong>Cons:</strong> Doubles the row count; less candidates visible per dropdown height.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Single render-loop change; preserves existing OptionList semantics; pairs with #12 colour-coding cleanly.</p>
+</section>
+<section id="item-24" class="issue medium">
+  <h2><span class="badge medium">Medium</span> <span>24. Decide on role-divider symmetry</span></h2>
+  <p class="meta">Where: <code>widgets/messages.py:9-30</code> · Screens S11, S15, S52</p>
+  <p class="why"><strong>Why it matters:</strong> `UserMessage` shows `── you ──` (dim). `AssistantMessage` has no `── assistant ──` parallel. Asymmetric — the conversation reads as a half-narrated transcript. Either both should have dividers, or neither.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s11_full_turn.svg" alt="S11 — `── you ──` on user, none on assistant" loading="lazy"><figcaption>S11 — `── you ──` on user, none on assistant</figcaption>
+      <img src="s15_session_resume_replay.svg" alt="S15 — same asymmetry on replay" loading="lazy"><figcaption>S15 — same asymmetry on replay</figcaption>
+      <p>User turn shows `── you ──` above its text; assistant turn flows directly into the Markdown render with no role marker.</p>
+      <pre><code># widgets/messages.py:9-30
+class UserMessage(Static):
+    ...
+    def __init__(self, text: str, **kwargs: object) -&gt; None:
+        super().__init__(f"[dim]── you ──[/]\n{text}", **kwargs)
+
+class AssistantMessage(Markdown):
+    DEFAULT_CSS = '''
+    AssistantMessage { margin: 0 0 1 0; padding: 0 1; }
+    '''
+    def __init__(self, initial: str = "", **kwargs: object) -&gt; None:
+        super().__init__(initial, **kwargs)
+        ...</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Drop both dividers; rely on indent + color + border</h4>
+        <pre><code># widgets/messages.py
+class UserMessage(Static):
+    DEFAULT_CSS = '''
+    UserMessage {
+        margin: 0 8 1 0; padding: 0 1;
+        color: $text-muted; background: $boost 30%;
+        border-left: tall $primary;
+    }
+    '''
+    def __init__(self, text, **kw):
+        super().__init__(text, **kw)   # no `── you ──`
+
+class AssistantMessage(Markdown):
+    DEFAULT_CSS = '''
+    AssistantMessage { margin: 0 0 1 0; padding: 0 1; }
+    '''</code></pre>
+        <div class="mockup">▎ what's the build status?
+
+The build is currently passing on main.
+Last run was 12 minutes ago…</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest reading flow; standard chat-app pattern (e.g. ChatGPT web). &middot; <strong>Cons:</strong> No explicit role label — accessibility-poor if border colour fails.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Symmetric dividers (`── you ──` and `── assistant ──`)</h4>
+        <pre><code>class UserMessage(Static):
+    def __init__(self, text, **kw):
+        super().__init__(f"[dim]── you ──[/]\n{text}", **kw)
+
+class AssistantMessage(Vertical):    # was Markdown; wrap to add label
+    DEFAULT_CSS = '''AssistantMessage { margin: 0 0 1 0; padding: 0 1; }'''
+    def __init__(self, initial="", **kw):
+        super().__init__(**kw)
+        self._md = Markdown(initial)
+        self._buffer = initial
+    def compose(self):
+        yield Static("[dim]── assistant ──[/]")
+        yield self._md
+    def append(self, text): ...</code></pre>
+        <div class="mockup">── you ──
+what's the build status?
+
+── assistant ──
+The build is currently passing on main.</div>
+        <p class="tradeoff"><strong>Pros:</strong> Explicit role attribution; pairs nicely with screen-reader output. &middot; <strong>Cons:</strong> More vertical space per turn; doubles a label that's also clear from visual treatment.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Single 'turn' label at the START of each pair</h4>
+        <pre><code># widgets/conversation.py — at start of every new user turn
+def add_user_message(self, text: str) -&gt; None:
+    self._next_turn_index += 1
+    self.mount(Static(f"[dim bold]── turn {self._next_turn_index} ──[/]"))
+    self.mount(UserMessage(text))
+
+# And UserMessage / AssistantMessage drop their own labels entirely</code></pre>
+        <div class="mockup">── turn 1 ──
+you: what's the build status?
+asst: The build is currently passing on main.
+
+── turn 2 ──
+you: …</div>
+        <p class="tradeoff"><strong>Pros:</strong> Turn numbering is genuinely useful (search, debugging, reference). &middot; <strong>Cons:</strong> Bigger conceptual change; affects scrollback and copy-paste.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; The border + color treatment carries enough role signal; dividers were redundant; pairs with #7b (UserMessage rail softening).</p>
+</section>
+<section id="item-25" class="issue low">
+  <h2><span class="badge low">Low</span> <span>25. Suppress Textual Footer's `more bindings` overflow indicator</span></h2>
+  <p class="meta">Where: Textual `Footer` default · most screens</p>
+  <p class="why"><strong>Why it matters:</strong> Footer shows `^p Commands ^s Sessions ^m Memory ^b Sidebar … ▏^p Commands` — the trailing `▏^p Commands` is Textual's overflow indicator with an overlap of the first binding. Visually duplicates and crowds the right edge.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s01_boot.svg" alt="S01 — `^p Commands` appears at end of overflow strip too" loading="lazy"><figcaption>S01 — `^p Commands` appears at end of overflow strip too</figcaption>
+      <p>Bottom row ends with a thin `▏` and a repeated `^p Commands` after the binding strip.</p>
+      <pre><code># app.py:152
+yield Footer()           # default config — overflow visible</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Pass `show_command_palette=False`</h4>
+        <pre><code># app.py:152
+yield Footer(show_command_palette=False)</code></pre>
+        <div class="mockup">^p Commands  ^s Sessions  ^m Memory  ^b Sidebar  ^f Search  ^c Stop  ?  q</div>
+        <p class="tradeoff"><strong>Pros:</strong> One-line fix; no custom widget. &middot; <strong>Cons:</strong> Loses Textual's overflow affordance — bindings beyond the strip width are silently truncated.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Drop Footer entirely (overlaps with #1 Option A)</h4>
+        <pre><code># app.py — see #1 Option A
+def compose(self) -&gt; ComposeResult:
+    yield AppHeader(...)
+    yield TabbedContent(...)
+    yield StatusBar(...)
+# Move binding hints into StatusBar's #shortcuts column.</code></pre>
+        <div class="mockup">(see Issue #1 Option A mockup)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Solves #1 and #25 with one change. &middot; <strong>Cons:</strong> Loses Textual's binding-discovery auto-render; manual hint maintenance.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Custom compact Footer subclass</h4>
+        <pre><code>from textual.widgets import Footer
+class CompactFooter(Footer):
+    DEFAULT_CSS = '''
+    CompactFooter &gt; .footer--description { color: $text-muted; }
+    CompactFooter &gt; .footer--key { color: $primary; text-style: bold; }
+    '''
+    compact = True       # textual 0.80+ flag
+    show_command_palette = False</code></pre>
+        <div class="mockup">^p cmds  ^s sess  ^m mem  ^b side  ^f find  ?</div>
+        <p class="tradeoff"><strong>Pros:</strong> Keeps Footer mechanics; quieter style. &middot; <strong>Cons:</strong> Depends on Textual version; subclass to maintain.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; One-line fix; defer #1 Option A as the deeper change.</p>
+</section>
+<section id="item-26" class="issue low">
+  <h2><span class="badge low">Low</span> <span>26. Restyle TabbedContent underline</span></h2>
+  <p class="meta">Where: Textual `TabbedContent` default · all tabbed screens</p>
+  <p class="why"><strong>Why it matters:</strong> Active tab shows `╸━━━━━━━━━╺` (rounded ends); inactive tabs show plain `━━`. The transition is abrupt and the active 'pill' is short relative to the tab labels. Looks like a 2D bar chart.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s01_boot.svg" alt="S01 — active tab uses rounded `╸━━━━╺` ends" loading="lazy"><figcaption>S01 — active tab uses rounded `╸━━━━╺` ends</figcaption>
+      <img src="s09_tab_cycle.svg" alt="S09 — same underline on flavor switch" loading="lazy"><figcaption>S09 — same underline on flavor switch</figcaption>
+      <p>A bottom horizontal line spans the tab strip with short rounded pill segments for active tabs.</p>
+      <pre><code># No explicit override — Textual default underline rendering</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Solid coloured underline (no rounded ends)</h4>
+        <pre><code>/* app.tcss */
+Tabs &gt; Underline { color: $panel; }
+Tabs &gt; Underline &gt; .underline--bar {
+    color: $primary;
+    background: $primary;
+}</code></pre>
+        <div class="mockup"> assistant  operator  custom
+━━━━━━━━━━            &lt;- solid primary under active</div>
+        <p class="tradeoff"><strong>Pros:</strong> One CSS rule; matches the FlavorPane border colour for cohesion. &middot; <strong>Cons:</strong> Loses the pill 'click target' affordance.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Left-bar indicator that aligns with FlavorPane border colour</h4>
+        <pre><code>Tabs &gt; Tab           { padding: 0 2; }
+Tabs &gt; Tab.-active   { background: $boost; border-left: tall $primary; }
+Tabs &gt; Underline     { display: none; }</code></pre>
+        <div class="mockup">▎assistant   operator   custom        &lt;- left bar instead of underline</div>
+        <p class="tradeoff"><strong>Pros:</strong> Vertical accent reads as 'currently selected'; matches FlavorPane left-bar pattern (see #7b). &middot; <strong>Cons:</strong> Less conventional for tab strips; users may misread as a list item.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Drop underline entirely; bold-active-label only</h4>
+        <pre><code>Tabs &gt; Underline { display: none; }
+Tabs &gt; Tab.-active { text-style: bold; color: $primary; }
+Tabs &gt; Tab          { color: $text-muted; }</code></pre>
+        <div class="mockup"> [assistant]   operator   custom        &lt;- bold + primary on active</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest possible; relies on weight + color. &middot; <strong>Cons:</strong> Subtle; users may miss the active state if not paying attention.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Smallest visual change while harmonising with the FlavorPane border colour state machine.</p>
+</section>
+<section id="item-27" class="issue low">
+  <h2><span class="badge low">Low</span> <span>27. Add placeholder hint inside empty ChatInput</span></h2>
+  <p class="meta">Where: <code>widgets/chat_input.py:25-37</code> · Screens S01, S54</p>
+  <p class="why"><strong>Why it matters:</strong> An empty bordered TextArea with no internal placeholder. The conversation's empty-state suggests Enter to send, but the input itself stays silent — first-run users don't know `/help` or `@file` exist from the input.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s54_empty_conversation_hint.svg" alt="S54 — empty conversation; input has no internal hint" loading="lazy"><figcaption>S54 — empty conversation; input has no internal hint</figcaption>
+      <img src="s01_boot.svg" alt="S01 — boot; input is silent" loading="lazy"><figcaption>S01 — boot; input is silent</figcaption>
+      <p>A 2-row bordered TextArea with empty interior. No `placeholder=` is set (Textual's TextArea has no native placeholder).</p>
+      <pre><code># widgets/chat_input.py:59-61
+def __init__(self, **kwargs: object) -&gt; None:
+    super().__init__(language=None, show_line_numbers=False, **kwargs)</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Overlay Static placeholder; hide on first keystroke</h4>
+        <pre><code>class ChatInput(TextArea):
+    DEFAULT_CSS = '''
+    ChatInput { ... }
+    ChatInput #ph-overlay {
+        layer: overlay; offset: 1 0;
+        color: $text-muted; text-style: italic;
+    }
+    ChatInput.has-text #ph-overlay { display: none; }
+    '''
+    def compose(self):
+        yield from super().compose()
+        yield Static("Type to chat  ·  /help  ·  @file", id="ph-overlay")
+
+    def _on_text_area_changed(self, event):
+        super()._on_text_area_changed(event)
+        self.set_class(bool(self.text), "has-text")</code></pre>
+        <div class="mockup">╭────────────────────────────────────────────────╮
+│ Type to chat · /help · @file                  │  &lt;- dim italic
+╰────────────────────────────────────────────────╯</div>
+        <p class="tradeoff"><strong>Pros:</strong> Discoverable; matches Slack/Discord/etc. compose-box pattern. &middot; <strong>Cons:</strong> Overlay layer requires care across themes; uses an extra DOM node.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Theme-override TextArea placeholder via Rich style</h4>
+        <pre><code># ChatInput.__init__
+from textual.widgets._text_area import TextAreaTheme
+self.theme = TextAreaTheme(
+    name="nx01",
+    base_style=Style(),
+    placeholder_text="Type to chat  ·  /help  ·  @file",
+)</code></pre>
+        <div class="mockup">(same visual as Option A but rendered by Textual's internal theme system)</div>
+        <p class="tradeoff"><strong>Pros:</strong> No extra widget; relies on Textual's native theming. &middot; <strong>Cons:</strong> `TextAreaTheme` placeholder support varies by version; brittle.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Inline hint above the input (no in-textarea placeholder)</h4>
+        <pre><code># widgets/flavor_pane.py — add a hint row above ChatInput
+with Vertical(id=f"conv-container-{self.flavor}"):
+    yield SearchBar(id=f"search-{self.flavor}")
+    yield ConversationView(id=f"conv-{self.flavor}")
+    yield SlashDropdown(id=f"slash-{self.flavor}")
+    yield FilePickerDropdown(id=f"files-{self.flavor}")
+    yield Static("[dim]Type · /help · @file[/]", id=f"input-hint-{self.flavor}")
+    yield ChatInput(id=f"input-{self.flavor}")
+
+# Hide hint when input has text:
+def on_chat_input_text_changed(self, ev):
+    self.query_one(f"#input-hint-{self.flavor}").display = not ev.text</code></pre>
+        <div class="mockup">(above input)  Type · /help · @file
+╭────────────────────────────────────────────────╮
+│                                                │
+╰────────────────────────────────────────────────╯</div>
+        <p class="tradeoff"><strong>Pros:</strong> Simplest; no overlay layer; clear discovery for first-run. &middot; <strong>Cons:</strong> Burns a row above the input.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Modern compose-box idiom; minimal vertical cost; the overlay disappears on first keystroke.</p>
+</section>
+<section id="item-28" class="issue low">
+  <h2><span class="badge low">Low</span> <span>28. Add `enter toggle · / filter` to SkillsModal hint</span></h2>
+  <p class="meta">Where: <code>modals/simple_modals.py:37</code> · Screen S18</p>
+  <p class="why"><strong>Why it matters:</strong> REPORT calls out 'clicking would load/unload' but the hint shows only `ESC close`. No `enter toggle · / filter` cue — users don't know how to act on a skill.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s18_skills_modal.svg" alt="S18 — hint says only `ESC close`" loading="lazy"><figcaption>S18 — hint says only `ESC close`</figcaption>
+      <p>`SkillsModal` ends with `[dim]ESC close[/]` — silent on actions.</p>
+      <pre><code># modals/simple_modals.py:37
+yield Static("[dim]ESC close[/]", classes="dialog-hint")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Single hint line with all actions</h4>
+        <pre><code>yield Static(
+    "[dim]↑↓ navigate · enter toggle load/unload · / filter · ESC close[/]",
+    classes="dialog-hint",
+)</code></pre>
+        <div class="mockup">↑↓ navigate · enter toggle load/unload · / filter · ESC close</div>
+        <p class="tradeoff"><strong>Pros:</strong> Matches the SessionsModal hint style; consistent vocabulary. &middot; <strong>Cons:</strong> Long line; wraps on narrow modal widths.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Two-tier hint (action vs navigation)</h4>
+        <pre><code>yield Static("[dim]enter[/] toggle  ·  [dim]/[/] filter", classes="dialog-hint")
+yield Static("[dim]↑↓ navigate · ESC close[/]", classes="dialog-hint dim")</code></pre>
+        <div class="mockup">enter toggle  ·  / filter
+↑↓ navigate · ESC close</div>
+        <p class="tradeoff"><strong>Pros:</strong> Primary actions stand out from navigation chrome. &middot; <strong>Cons:</strong> Two rows of hint.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Match the established SessionsModal hint pattern for consistency.</p>
+</section>
+<section id="item-29" class="issue low">
+  <h2><span class="badge low">Low</span> <span>29. Move ToolsModal V2 callout off the hint line</span></h2>
+  <p class="meta">Where: <code>modals/simple_modals.py:58-60</code> · Screen S19</p>
+  <p class="why"><strong>Why it matters:</strong> Hint reads `MCP and Toolsets tabs land in V2 · ESC close`. Mixing roadmap copy with action hints reads like a stuck 'we know it's incomplete' sticker. Hint line should be action-only.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s19_tools_modal.svg" alt="S19 — hint mixes V2-coming-soon with ESC close" loading="lazy"><figcaption>S19 — hint mixes V2-coming-soon with ESC close</figcaption>
+      <p>The dialog footer mixes roadmap + action cues in one dim line.</p>
+      <pre><code># modals/simple_modals.py:58-60
+yield Static(
+    "[dim]MCP and Toolsets tabs land in V2 · ESC close[/]", classes="dialog-hint"
+)</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Soft callout Static above the OptionList; clean hint at bottom</h4>
+        <pre><code>with Vertical(classes="dialog"):
+    yield Static("[bold]Tools[/]", classes="dialog-title")
+    yield Static(
+        "[$warning italic]MCP and Toolsets coming in V2[/]",
+        classes="soft-callout",
+    )
+    yield OptionList(*opts)
+    yield Static(
+        "[dim]↑↓ navigate · / filter · ESC close[/]",
+        classes="dialog-hint",
+    )
+
+# app.tcss — shared callout style
+.soft-callout { color: $warning; padding: 0 1; margin-bottom: 1; }</code></pre>
+        <div class="mockup">┌── Tools ─────────────────────────────────────┐
+│ MCP and Toolsets coming in V2                │
+│                                              │
+│ ▸ bash       runs shell commands             │
+│ ▸ python     runs python code                │
+│                                              │
+│ ↑↓ navigate · / filter · ESC close           │
+└──────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Separates 'state of feature' from 'how to act'; reusable callout class. &middot; <strong>Cons:</strong> An extra row at the top of the modal.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Drop the V2 callout entirely; let HelpModal carry roadmap</h4>
+        <pre><code>yield Static("[dim]↑↓ navigate · / filter · ESC close[/]", classes="dialog-hint")
+# Move 'MCP/Toolsets in V2' to HelpModal's roadmap section (see #14 Option C)</code></pre>
+        <div class="mockup">┌── Tools ─────────────────────────────────────┐
+│ ▸ bash       runs shell commands             │
+│ ▸ python     runs python code                │
+│ ↑↓ navigate · / filter · ESC close           │
+└──────────────────────────────────────────────┘</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest modal; one source of truth for roadmap. &middot; <strong>Cons:</strong> Loses contextual discoverability of V2 features.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Keeps discoverability in context, but separates concerns; pairs with #14's V2 hiding.</p>
+</section>
+<section id="item-30" class="issue low">
+  <h2><span class="badge low">Low</span> <span>30. Unify spinner widgets · honour NX01_REDUCE_MOTION</span></h2>
+  <p class="meta">Where: <code>widgets/spinner.py</code> · <code>widgets/thinking_block.py:67-70</code> · Screens S11, S27, S47</p>
+  <p class="why"><strong>Why it matters:</strong> Two spinner classes are used (`SpinnerWidget("dots")` and `StarSpinner`). Different speeds, different glyph sets. No 'reduce motion' affordance for accessibility.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s11_full_turn.svg" alt="S11 — braille `⠋` (Thinking) and star `✻` (Tool) co-exist" loading="lazy"><figcaption>S11 — braille `⠋` (Thinking) and star `✻` (Tool) co-exist</figcaption>
+      <img src="s47_status_bar_thinking.svg" alt="S47 — yet another spinner in the status bar" loading="lazy"><figcaption>S47 — yet another spinner in the status bar</figcaption>
+      <p>`SpinnerWidget` runs at 60Hz braille; `StarSpinner` runs at 8Hz `· ✻ ✽ ✶ ✳ ✢`. Mixed within the same conversation.</p>
+      <pre><code># widgets/spinner.py
+class SpinnerWidget(Static):
+    def __init__(self, spinner_name: str = "dots", **kwargs):
+        self._spinner = Spinner(spinner_name)
+        super().__init__(self._spinner, **kwargs)
+    def on_mount(self):
+        self.set_interval(1 / 60, self.refresh)
+
+class StarSpinner(Static):
+    FRAMES = ("·", "✻", "✽", "✶", "✳", "✢")
+    INTERVAL = 1 / 8
+    ...</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Single `Spinner` widget; reduce-motion via env var</h4>
+        <pre><code># widgets/spinner.py
+import os
+_REDUCE = os.environ.get("NX01_REDUCE_MOTION") == "1"
+
+class Spinner(Static):
+    DEFAULT_FRAMES = ("⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏")
+    INTERVAL = 1 / 12
+
+    def __init__(self, style: str = "dots", **kw):
+        super().__init__("⠋", **kw)
+        self._frames = self.DEFAULT_FRAMES   # one frame set; flavour via colour, not glyph
+        self._frame = 0
+
+    def on_mount(self):
+        if _REDUCE:
+            self.update("⏳")
+            return
+        self.set_interval(self.INTERVAL, self._tick)
+
+    def _tick(self):
+        self._frame = (self._frame + 1) % len(self._frames)
+        self.update(self._frames[self._frame])
+
+# Migrate StarSpinner usages to Spinner with $success colour.</code></pre>
+        <div class="mockup">(motion on)    ⠋ Thinking…    ⠋ Tool call (different colour)
+(motion off)   ⏳ Thinking…    ⏳ Tool call</div>
+        <p class="tradeoff"><strong>Pros:</strong> One spinner; visual flavour via CSS colour; accessibility via env var. &middot; <strong>Cons:</strong> Loses the unique star-pulse aesthetic of ToolCallBlock; people may miss it.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Two spinners, but unified interval + env-var-respecting base class</h4>
+        <pre><code>class _BaseSpinner(Static):
+    FRAMES = ()
+    INTERVAL = 1 / 12
+    _REDUCE = os.environ.get("NX01_REDUCE_MOTION") == "1"
+
+    def on_mount(self):
+        if self._REDUCE:
+            self.update("⏳")
+            return
+        self.set_interval(self.INTERVAL, self._tick)
+    ...
+
+class DotsSpinner(_BaseSpinner):
+    FRAMES = ("⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏")
+
+class StarSpinner(_BaseSpinner):
+    FRAMES = ("·","✻","✽","✶","✳","✢")</code></pre>
+        <div class="mockup">(motion on)   ⠋ Thinking…   ✻ Tool call
+(motion off)  ⏳ Thinking…  ⏳ Tool call</div>
+        <p class="tradeoff"><strong>Pros:</strong> Keeps both aesthetics; reduce-motion still uniform. &middot; <strong>Cons:</strong> Two spinners still — minor inconsistency persists.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — No animation; static glyph + numeric elapsed</h4>
+        <pre><code># Replace spinner with a static glyph that updates the elapsed seconds.
+# The 'motion' becomes the changing number, not the changing glyph.
+class StaticSpinner(Static):
+    def __init__(self, glyph: str = "⠋", **kw):
+        super().__init__(glyph, **kw)
+    # ThinkingBlock / ToolCallBlock already render an elapsed counter — that's the motion.</code></pre>
+        <div class="mockup">⠋ Thinking…  3s
+⠋ Thinking…  4s    &lt;- only the number changes</div>
+        <p class="tradeoff"><strong>Pros:</strong> Zero animation; perfectly accessible; preserves info density. &middot; <strong>Cons:</strong> Feels static — many users associate motion with 'still working'.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; One canonical spinner with motion-reduce env var; visual flavour stays via CSS colour.</p>
+</section>
+<section id="item-31" class="issue low">
+  <h2><span class="badge low">Low</span> <span>31. Decode `&amp;#x27;` apostrophes in SVG snapshots</span></h2>
+  <p class="meta">Where: Snapshot/export pipeline · Screens S08, S15</p>
+  <p class="why"><strong>Why it matters:</strong> SVG snapshot extraction emits `&amp;#x27;` for `'` due to XML escaping. Not a runtime bug, but copy-paste from snapshots leaves the entity. Worth pinning a test that asserts plain apostrophes in copied content.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s08_sessions_modal.svg" alt="S08 — session previews contain `&amp;#x27;`" loading="lazy"><figcaption>S08 — session previews contain `&amp;#x27;`</figcaption>
+      <img src="s15_session_resume_replay.svg" alt="S15 — same artefact in replay" loading="lazy"><figcaption>S15 — same artefact in replay</figcaption>
+      <p>Inside session previews and replayed transcripts, apostrophes render as literal `&amp;#x27;` in the SVG export.</p>
+      <pre><code># No post-processing step; pytest-textual-snapshot writes SVG via Rich,
+# which double-escapes single quotes for XML compliance.</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Snapshot post-processing in conftest.py</h4>
+        <pre><code># tests/conftest.py
+import re, pathlib
+_ENTITY_RX = re.compile(r"&amp;#x27;")
+
+@pytest.fixture(autouse=True)
+def _decode_apostrophes_on_snapshot(snap_compare):
+    yield
+    for svg in pathlib.Path("tests/__snapshots__").glob("*.svg"):
+        text = svg.read_text()
+        if "&amp;#x27;" in text:
+            svg.write_text(_ENTITY_RX.sub("'", text))</code></pre>
+        <div class="mockup">(snapshot artefact decoded post-hoc; SVG renders an actual `'`)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Catches all current and future occurrences; no app-side change. &middot; <strong>Cons:</strong> Acts on artefact files; doesn't surface the root cause.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Assert apostrophes in copy-to-clipboard tests</h4>
+        <pre><code># tests/test_yank.py
+def test_yank_preserves_apostrophe(app):
+    app.set_clipboard_for_test(...)
+    app._copy("it's done")
+    assert app.clipboard_text == "it's done"
+    assert "&amp;#x27;" not in app.clipboard_text</code></pre>
+        <div class="mockup">(test prevents regression on the actual clipboard path)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Tests the meaningful path (user-facing copy), not the snapshot artefact. &middot; <strong>Cons:</strong> Doesn't fix the SVG artefact in REPORT.md.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Snapshot artefact is the visible-to-user problem; root-cause it where it lives.</p>
+</section>
+<section id="item-32" class="issue low">
+  <h2><span class="badge low">Low</span> <span>32. Replace `_(skill content not yet streamed)_` placeholder</span></h2>
+  <p class="meta">Where: <code>widgets/skill_block.py:45</code> · no canonical screenshot</p>
+  <p class="why"><strong>Why it matters:</strong> `content = content or '_(skill content not yet streamed)_'` — underscore markdown italics render as literal underscores in the body until streamed content arrives. Reads as 'broken' rather than 'loading'.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s11_full_turn.svg" alt="S11 — SkillBlock in a turn (placeholder not visible in test data)" loading="lazy"><figcaption>S11 — SkillBlock in a turn (placeholder not visible in test data)</figcaption>
+      <p>When a SkillBlock is mounted before its manifest content arrives, the Markdown body renders the literal Markdown italic syntax (underscores included).</p>
+      <pre><code># widgets/skill_block.py:39-46
+def __init__(self, skill_name, skill_size=0, content="", **kwargs):
+    super().__init__(**kwargs)
+    self.skill_name = skill_name
+    self.skill_size = skill_size
+    self.content = content or "_(skill content not yet streamed)_"
+    self.add_class("collapsed")</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Render via Static (not Markdown) until content arrives</h4>
+        <pre><code># widgets/skill_block.py
+def __init__(self, skill_name, skill_size=0, content="", **kwargs):
+    super().__init__(**kwargs)
+    self.skill_name = skill_name
+    self.skill_size = skill_size
+    self.content = content
+    self._placeholder = "[dim italic]Loading skill manifest…[/]"
+    self.add_class("collapsed")
+
+def compose(self) -&gt; ComposeResult:
+    with Horizontal(id="header"):
+        ...
+    if self.content:
+        yield Markdown(self.content)
+    else:
+        yield Static(self._placeholder, id="placeholder")
+
+def set_content(self, content: str) -&gt; None:
+    self.content = content
+    try:
+        self.query_one("#placeholder").remove()
+    except Exception:  # noqa: BLE001
+        pass
+    self.mount(Markdown(content))</code></pre>
+        <div class="mockup">(collapsed)  ⚡ skill:ci-setup   loaded   4.2kb
+(expanded, loading)
+    ⚡ skill:ci-setup
+    Loading skill manifest…       &lt;- dim italic
+(expanded, loaded)
+    ⚡ skill:ci-setup
+    # CI Setup
+    Steps to configure CI…</div>
+        <p class="tradeoff"><strong>Pros:</strong> Native-looking placeholder; swap on content arrival. &middot; <strong>Cons:</strong> Two render paths (Static vs Markdown); mount-after-compose is slightly awkward.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Inline Markdown with proper italic syntax</h4>
+        <pre><code>self.content = content or "[Loading skill manifest…]"
+# The Markdown widget renders square-bracketed text as plain;
+# use raw Rich-style instead:
+self.content = content or "*Loading skill manifest…*"</code></pre>
+        <div class="mockup">*Loading skill manifest…*   &lt;- rendered as italic</div>
+        <p class="tradeoff"><strong>Pros:</strong> Trivial; keeps single Markdown widget. &middot; <strong>Cons:</strong> Still markdown; italic-via-`*` works but underscores fail; brittle.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Native to the rest of the UI; consistent with how loading states render elsewhere.</p>
+</section>
+<section id="item-33" class="issue low">
+  <h2><span class="badge low">Low</span> <span>33. Rebind `q` → `ctrl+q` for quit</span></h2>
+  <p class="meta">Where: <code>app.py:102</code> · no canonical screenshot</p>
+  <p class="why"><strong>Why it matters:</strong> Plain `q` quits the app. TextArea steals most keys, but `q` is bound app-level (`show=True`). When focus is between modal-closed and input-not-yet-focused, a stray `q` exits. Especially dangerous mid-chat with an unsent message.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s01_boot.svg" alt="S01 — `q` listed as global quit binding in Footer" loading="lazy"><figcaption>S01 — `q` listed as global quit binding in Footer</figcaption>
+      <p>Global binding `Binding("q", "request_quit", "Quit", show=True)` — exits immediately, no confirmation.</p>
+      <pre><code># app.py:102
+Binding("q", "request_quit", "Quit", show=True),</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — Move to `ctrl+q` (modifier-required)</h4>
+        <pre><code># app.py
+Binding("ctrl+q", "request_quit", "Quit", show=True),
+
+# modals/help_modal.py — update the documented binding
+("Global", "ctrl+q", "Quit"),</code></pre>
+        <div class="mockup">Footer shows `^q Quit` (instead of `q`)</div>
+        <p class="tradeoff"><strong>Pros:</strong> Removes the entire class of accidental quit; standard modifier-required pattern. &middot; <strong>Cons:</strong> One-keystroke quit is gone (rare but loved by power users).</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Keep `q` but require a ConfirmModal if input has text</h4>
+        <pre><code>async def action_request_quit(self) -&gt; None:
+    flavor = self._active_flavor()
+    if flavor:
+        try:
+            inp = self.query_one(f"#input-{flavor}", ChatInput)
+            if inp.text.strip():
+                ok = await self.push_screen_wait(
+                    ConfirmModal(
+                        "Quit and discard your unsent message?",
+                        dangerous=True,
+                    )
+                )
+                if not ok:
+                    return
+        except Exception:  # noqa: BLE001
+            pass
+    self.exit()</code></pre>
+        <div class="mockup">(input empty)    q  → quit
+(input has text) q  → confirm modal `Quit and discard your unsent message?`</div>
+        <p class="tradeoff"><strong>Pros:</strong> Preserves quick exit when safe; protects against losing in-flight work. &middot; <strong>Cons:</strong> More code paths; modal-over-app subtle UX.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Replace `q` with `:q` (vim-style command mode)</h4>
+        <pre><code># Remove the global `q` binding; add a `:` binding that opens a
+# mini command line (similar to vim) accepting `q` / `q!` / `w`...
+# Out of scope for V1 — sketch only.
+Binding(":", "open_cmdline", "Cmdline", show=False),
+
+async def action_open_cmdline(self) -&gt; None:
+    cmd = await self.push_screen_wait(CmdlineModal())
+    if cmd == "q": self.exit()
+    elif cmd == "q!": self.exit()</code></pre>
+        <div class="mockup">:q       &lt;- type colon then q to quit</div>
+        <p class="tradeoff"><strong>Pros:</strong> Familiar to vim users; expandable to other commands. &middot; <strong>Cons:</strong> Significant new UI surface; way beyond a 'safety' fix.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Simplest, safest, aligns with the rest of the global bindings using `ctrl+`.</p>
+</section>
+<section id="item-34" class="issue low">
+  <h2><span class="badge low">Low</span> <span>34. Replace `·` separators with `┃` and segment header</span></h2>
+  <p class="meta">Where: <code>widgets/header.py:56-66</code> · Screens S01, S30–S33</p>
+  <p class="why"><strong>Why it matters:</strong> `NX01  mock (reconnecting)  ·  —` reads as one continuous phrase. The brand, connection state, and model are conceptually different but visually fused — `·` dots are too quiet to segment.</p>
+  <div class="compare">
+    <div class="current"><h3>Current</h3>
+      <img src="s01_boot.svg" alt="S01 — `NX01  mock (reconnecting)  ·  —`" loading="lazy"><figcaption>S01 — `NX01  mock (reconnecting)  ·  —`</figcaption>
+      <img src="s33_header_connected.svg" alt="S33 — `NX01  cyan.api  ·  gpt-4o`" loading="lazy"><figcaption>S33 — `NX01  cyan.api  ·  gpt-4o`</figcaption>
+      <p>Header brand row is a single Static with `·` dim separators between segments.</p>
+      <pre><code># widgets/header.py:66
+return f"[bold]NX01[/bold]  {domain}  [dim]·[/]  [dim]{self.model}[/]"</code></pre>
+    </div>
+    <div class="solutions"><h3>Solutions</h3>
+      <div class="solution">
+        <h4>Option A — `┃` vertical bar separators</h4>
+        <pre><code># widgets/header.py
+def _brand_text(self) -&gt; str:
+    if self.auth_failed: domain = f"[$error]{self.domain}[/] [bold $error reverse] AUTH [/]"
+    elif self.reconnecting: domain = f"[$warning]{self.domain}[/] [bold $warning reverse] RECON [/]"
+    elif self.connected:    domain = f"[cyan]{self.domain}[/]"
+    else:                    domain = f"[$error]{self.domain}[/] [bold $error reverse] OFFLINE [/]"
+    model = self.model or "[dim italic]no model[/]"
+    return f"[bold]NX01[/bold]  [dim]┃[/]  {domain}  [dim]┃[/]  [dim]{model}[/]"</code></pre>
+        <div class="mockup">NX01  ┃  cyan.api          ┃  gpt-4o</div>
+        <p class="tradeoff"><strong>Pros:</strong> Vertical bar is a stronger column separator; pairs with the AUTH/RECON badge from #19. &middot; <strong>Cons:</strong> Some terminals don't render `┃` cleanly on certain fonts.</p>
+      </div>
+      <div class="solution">
+        <h4>Option B — Three explicit Statics with background tints</h4>
+        <pre><code># widgets/header.py — compose three separate Statics so each can carry its own style
+def compose(self) -&gt; ComposeResult:
+    yield Static("[bold]NX01[/]", id="brand-name")
+    yield Static("", id="sep-1")
+    yield Static(self._domain_text(), id="brand-domain")
+    yield Static("", id="sep-2")
+    yield Static(self._model_text(), id="brand-model")
+    yield Static("", id="spacer")
+    yield Static(self._hints_text(), id="hints")
+
+DEFAULT_CSS = '''
+AppHeader #brand-name   { width: auto; padding: 0 1; background: $boost; }
+AppHeader #brand-domain { width: auto; padding: 0 1; }
+AppHeader #brand-model  { width: auto; padding: 0 1; color: $text-muted; }
+AppHeader #sep-1, AppHeader #sep-2 { width: 1; color: $panel; }
+'''</code></pre>
+        <div class="mockup">┃NX01┃ cyan.api  gpt-4o                       ctrl+p cmd · ?</div>
+        <p class="tradeoff"><strong>Pros:</strong> Each segment is independently style-able; semantic separation. &middot; <strong>Cons:</strong> More widgets; reactives need to update three Statics instead of one.</p>
+      </div>
+      <div class="solution">
+        <h4>Option C — Drop separators, lean on spacing alone</h4>
+        <pre><code>def _brand_text(self) -&gt; str:
+    ...
+    return f"[bold]NX01[/bold]     {domain}     [dim]{model}[/]"</code></pre>
+        <div class="mockup">NX01     cyan.api     gpt-4o</div>
+        <p class="tradeoff"><strong>Pros:</strong> Cleanest possible. &middot; <strong>Cons:</strong> Loses any visual segmentation cue.</p>
+      </div>
+    </div>
+  </div>
+  <p class="recommendation"><strong>Recommended:</strong> Option A &mdash; Single-line change; vertical bar dramatically improves segment readability; pairs naturally with #19's badge work.</p>
+</section>
+    </main>
+  </div>
+</body>
+</html>

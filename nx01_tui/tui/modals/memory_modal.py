@@ -43,6 +43,17 @@ class MemoryModal(BaseModal):
                 classes="dialog-hint",
             )
 
+    _EMPTY_HINT = {
+        "agent": (
+            "[dim italic]Agent memory captures facts the agent should remember "
+            'across sessions. Type [bold]/memory add "fact"[/] in chat to seed.[/]'
+        ),
+        "user": (
+            "[dim italic]User profile captures stable facts about you (preferences, "
+            'project, env). Type [bold]/user add "fact"[/] in chat to seed.[/]'
+        ),
+    }
+
     def _render_store(self, entries: list[str], limit: int, store: str) -> ComposeResult:
         total_chars = sum(len(e) for e in entries)
         pct = (total_chars / limit) * 100 if limit else 0
@@ -51,5 +62,12 @@ class MemoryModal(BaseModal):
             f"[{color}]{total_chars:,} / {limit:,} chars  ({pct:.0f}%)[/]",
             classes="memory-content",
         )
-        body = "\n\n".join(f"§ {e}" for e in entries) if entries else "[dim]empty[/]"
-        yield Static(body, classes="memory-content")
+        if entries:
+            # Drop the `§` glyph too (#29 item 7 monochrome family).
+            body = "\n\n".join(f"• {e}" for e in entries)
+            yield Static(body, classes="memory-content")
+        else:
+            yield Static(
+                self._EMPTY_HINT.get(store, "[dim italic]empty[/]"),
+                classes="memory-content",
+            )

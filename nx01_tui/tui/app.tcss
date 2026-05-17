@@ -9,9 +9,26 @@ Screen {
 
 AppHeader  { dock: top;    height: 1; background: $surface; }
 StatusBar  { dock: bottom; height: 1; background: $surface; }
-Footer     { dock: bottom; }
 
 TabbedContent { height: 1fr; }
+
+/* Solid coloured underline for the active tab (#29 item 26) — replaces
+   the default `╸━━━╺` rounded pill which read like a 2D bar chart. */
+TabbedContent Tabs > Underline > .underline--bar {
+    color: $primary;
+    background: $primary;
+}
+
+/* ── Shared OptionList chrome (#29 item 5) ─────────────────────────
+   Kill the default full-height `▊` left rail on every option row;
+   highlighted row uses a flat $boost background instead.            */
+
+OptionList > .option-list--option-highlighted {
+    background: $boost;
+    color: $text;
+    text-style: bold;
+}
+OptionList > .option-list--option { padding: 0 1; }
 
 /* ── FlavorPane state-class colors ──────────────────────────────── */
 /* (border colors animate automatically via transition rule on FlavorPane) */

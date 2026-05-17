@@ -33,20 +33,23 @@ async def test_command_modal_renders_categorised_options():
 
 
 @pytest.mark.asyncio
-async def test_filter_narrows_visible_options():
+async def test_v2_rows_hidden():
+    """#29 item 14 — V2 disabled rows are filtered out of the visible list."""
     app = _Host()
     async with app.run_test() as pilot:
         await pilot.pause(0.05)
         modal = CommandModal(default_commands())
         await app.push_screen(modal)
         await pilot.pause(0.05)
-        from textual.widgets import Input, OptionList
+        from textual.widgets import OptionList
 
-        before = modal.query_one("#cmd-list", OptionList).option_count
-        modal.query_one("#filter", Input).value = "memory"
-        await pilot.pause(0.1)
-        after = modal.query_one("#cmd-list", OptionList).option_count
-        assert 0 < after < before
+        lst = modal.query_one("#cmd-list", OptionList)
+        ids = [
+            lst.get_option_at_index(i).id
+            for i in range(lst.option_count)
+            if lst.get_option_at_index(i).id
+        ]
+        assert not any(opt and opt.startswith("v2_") for opt in ids)
 
 
 @pytest.mark.asyncio

@@ -175,7 +175,11 @@ class ToolCallBlock(Vertical):
     # ── Collapse control ─────────────────────────────────────────────
 
     def set_collapsed(self, collapsed: bool) -> None:
+        # Single source of truth — watch_collapsed handles all the chrome
+        # so the chevron can't drift from the body's visibility (#29 item 22).
         self.collapsed = collapsed
+
+    def watch_collapsed(self, collapsed: bool) -> None:
         if collapsed:
             self.add_class("collapsed")
         else:

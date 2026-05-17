@@ -27,11 +27,11 @@ _MAX_BUFFERED_EVENTS = 500
 class DebugModal(BaseModal):
     DEFAULT_CSS = """
     DebugModal .dialog { width: 90%; height: 90%; }
-    DebugModal #filter-row { height: 3; }
-    DebugModal #filter { width: 1fr; }
-    DebugModal Button { margin-left: 1; }
+    DebugModal #filter { height: 3; margin-bottom: 1; }
     DebugModal RichLog { height: 1fr; background: $background; border: round $panel; }
     DebugModal #event-counts { color: $text-muted; height: 1; }
+    DebugModal #footer-row { height: 3; align-horizontal: right; }
+    DebugModal #footer-row Button { margin-left: 1; }
     """
 
     BINDINGS = [
@@ -52,13 +52,15 @@ class DebugModal(BaseModal):
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
             yield Static("[bold]Debug · raw SSE event log[/]", classes="dialog-title")
-            with Horizontal(id="filter-row"):
-                yield Input(placeholder="Filter by event type…", id="filter")
+            yield Input(placeholder="Filter by event type…", id="filter")
+            yield Static("0 events buffered · live", id="event-counts")
+            yield RichLog(highlight=True, markup=False, wrap=False, id="event-log")
+            # Footer row (#29 item 16) — actions right-aligned, separated from
+            # the filter input so labels never crop.
+            with Horizontal(id="footer-row"):
                 yield Button("Pause (p)", id="pause-btn", variant="warning")
                 yield Button("Clear (ctrl+l)", id="clear-btn")
                 yield Button("Copy (ctrl+y)", id="copy-btn", variant="primary")
-            yield Static("0 events buffered · live", id="event-counts")
-            yield RichLog(highlight=True, markup=False, wrap=False, id="event-log")
 
     def on_mount(self) -> None:
         self._render_buffer()

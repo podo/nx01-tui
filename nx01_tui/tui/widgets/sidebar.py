@@ -120,6 +120,12 @@ class MemorySection(_Section):
     def _label(self, name: str, used: int, limit: int) -> str:
         pct = (used / limit) * 100 if limit else 0
         color = "$success" if pct < 75 else ("$warning" if pct < 90 else "$error")
+        if used > limit:
+            over = used - limit
+            return (
+                f"[{color}]{name}[/]  [dim]{used:,} / {limit:,}[/]"
+                f"  [$error]+{over:,} over · /compact[/]"
+            )
         return f"[{color}]{name}[/]  [dim]{used:,} / {limit:,}[/]"
 
     def watch_agent_chars(self, value: int) -> None:
@@ -168,7 +174,7 @@ class SkillsSection(_Section):
         for skill in state.skills_loaded[-6:]:
             kb = skill.get("size", 0) / 1024
             size_str = f"  [dim]{kb:.1f}kb[/]" if skill.get("size") else ""
-            container.mount(Static(f"[$accent]⚡[/] [bold]{skill['name']}[/]{size_str}"))
+            container.mount(Static(f"[$accent]◆[/] [bold]{skill['name']}[/]{size_str}"))
 
 
 # ── MCP server status (V2 — populated from /mcp/servers endpoint) ────
@@ -347,14 +353,13 @@ class MonitorSidebar(Vertical):
 
     def apply_terminal_width(self, width: int) -> None:
         self.remove_class("hidden", "icon-strip")
-        if width < 100:
+        # Hide entirely below 130 cols (#29 item 3). The previous icon-strip
+        # mode rendered an empty 3-col sliver because no per-section icons
+        # exist; the StatusBar surfaces a `ctrl+b` hint instead.
+        if width < 130:
             self.add_class("hidden")
             return
-        if width < 130:
-            self.add_class("icon-strip")
-            return
         # Normal mode — scale linearly with terminal width, clamped to
-        # [MIN_WIDTH, MAX_WIDTH]. Wider terminal → more room for memory bars
-        # + activity rows without shrinking the conversation column.
+        # [MIN_WIDTH, MAX_WIDTH].
         target = max(self.MIN_WIDTH, min(self.MAX_WIDTH, width // 4))
         self.styles.width = target
