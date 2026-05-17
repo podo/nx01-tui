@@ -35,7 +35,6 @@ class FilePickerDropdown(OptionList):
     DEFAULT_CSS = """
     FilePickerDropdown {
         display: none;
-        dock: top;
         height: auto;
         max-height: 8;
         border: round $accent;

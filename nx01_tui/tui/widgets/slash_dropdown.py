@@ -53,7 +53,6 @@ class SlashDropdown(OptionList):
     DEFAULT_CSS = """
     SlashDropdown {
         display: none;
-        dock: top;
         height: auto;
         max-height: 8;
         border: round $panel;
