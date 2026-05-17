@@ -31,71 +31,76 @@ def default_commands() -> list[CommandEntry]:
         # Quick Actions
         CommandEntry(
             "open_sessions",
-            "💬 Sessions",
+            "Sessions",
             "Resume · fork · rename · delete",
             "ctrl+s",
             "Quick Actions",
         ),
-        CommandEntry("open_memory", "📝 Memory", "Agent + user profile", "ctrl+m", "Quick Actions"),
+        CommandEntry("open_memory", "Memory", "Agent + user profile", "ctrl+m", "Quick Actions"),
         CommandEntry(
-            "new_session", "+ New Session", "Start a fresh session", "ctrl+n", "Quick Actions"
+            "new_session", "New Session", "Start a fresh session", "ctrl+n", "Quick Actions"
         ),
-        CommandEntry("open_skills", "⚡ Skills", "List · load · unload", "ctrl+k", "Quick Actions"),
+        CommandEntry("open_skills", "Skills", "List · load · unload", "ctrl+k", "Quick Actions"),
         CommandEntry(
             "open_tools",
-            "🔧 Tools & MCP",
+            "Tools & MCP",
             "Tools, toolsets, MCP servers",
             "ctrl+t",
             "Quick Actions",
         ),
         # Flavor
-        CommandEntry("switch_flavor", "🤖 Switch Flavor", "Next flavor tab", "Tab", "Flavor"),
+        CommandEntry("switch_flavor", "Switch Flavor", "Next flavor tab", "Tab", "Flavor"),
         CommandEntry(
-            "switch_model", "⚙ Switch Model", "Change the underlying model", "/model", "Flavor"
+            "switch_model", "Switch Model", "Change the underlying model", "/model", "Flavor"
         ),
         # View
         CommandEntry(
-            "toggle_sidebar", "▸ Toggle Sidebar", "Show/hide monitoring sidebar", "ctrl+b", "View"
+            "toggle_sidebar", "Toggle Sidebar", "Show/hide monitoring sidebar", "ctrl+b", "View"
         ),
-        CommandEntry("toggle_theme", "🎨 Toggle Theme", "Dark / light", "d", "View"),
-        CommandEntry("search", "🔍 Search", "Search in conversation", "ctrl+f", "View"),
+        CommandEntry("toggle_theme", "Toggle Theme", "Dark / light", "d", "View"),
+        CommandEntry("search", "Search", "Search in conversation", "ctrl+f", "View"),
         # System
-        CommandEntry("open_cost", "📊 Cost & Tokens", "Usage breakdown", "/cost", "System"),
-        CommandEntry("open_config", "⚙ Configuration", "App settings", "/config", "System"),
-        CommandEntry("help", "❓ Help", "Keyboard shortcuts", "?", "System"),
+        CommandEntry("open_cost", "Cost & Tokens", "Usage breakdown", "/cost", "System"),
+        CommandEntry("open_config", "Configuration", "App settings", "/config", "System"),
+        CommandEntry("help", "Help", "Keyboard shortcuts", "?", "System"),
         CommandEntry(
             "open_debug",
-            "🐛 Debug",
+            "Debug",
             "Raw SSE event log",
             "ctrl+shift+d",
             "System",
         ),
-        CommandEntry("quit", "🚪 Quit", "Exit the application", "q", "System"),
+        CommandEntry("quit", "Quit", "Exit the application", "q", "System"),
         # V2 (disabled)
+        CommandEntry("v2_cron", "Cron Jobs", "Scheduled tasks (v2)", "/cron", "V2", enabled=False),
+        CommandEntry("v2_kanban", "Kanban", "Board view (v2)", "/kanban", "V2", enabled=False),
         CommandEntry(
-            "v2_cron", "⏰ Cron Jobs", "Scheduled tasks (v2)", "/cron", "V2", enabled=False
-        ),
-        CommandEntry("v2_kanban", "📋 Kanban", "Board view (v2)", "/kanban", "V2", enabled=False),
-        CommandEntry(
-            "v2_browser", "🌐 Browser", "Screenshot view (v2)", "/browser", "V2", enabled=False
+            "v2_browser", "Browser", "Screenshot view (v2)", "/browser", "V2", enabled=False
         ),
         CommandEntry(
-            "v2_plugins", "🔌 Plugins", "Plugin manager (v2)", "/plugins", "V2", enabled=False
+            "v2_plugins", "Plugins", "Plugin manager (v2)", "/plugins", "V2", enabled=False
         ),
     ]
 
 
 class CommandModal(BaseModal):
-    """ModalScreen[str] — dismisses with selected action id or empty string."""
+    """ModalScreen[str] — dismisses with selected action id or empty string.
+
+    List-focused by default (D1 in podo/nx01-tui#26). Type `/` inside the
+    modal to reveal a filter input row; press Escape to hide it again.
+    """
 
     DEFAULT_CSS = """
     CommandModal .dialog { width: 70; height: 90%; }
-    CommandModal Input { margin-bottom: 1; }
+    CommandModal Input { margin-bottom: 1; display: none; }
+    CommandModal Input.visible { display: block; }
     CommandModal OptionList { height: 1fr; }
     """
 
     BINDINGS = [
         Binding("enter", "select", "Select", show=False),
+        # `/` reveals the (otherwise hidden) filter input.
+        Binding("slash", "reveal_filter", show=False),
     ]
 
     def __init__(self, commands: list[CommandEntry] | None = None, **kwargs: object) -> None:
@@ -108,7 +113,18 @@ class CommandModal(BaseModal):
             yield Static("[bold]Commands[/]", classes="dialog-title")
             yield Input(placeholder="Filter…", id="filter")
             yield OptionList(*self._render_options(""), id="cmd-list")
-            yield Static("[dim]↑↓ navigate · Enter run · ESC close[/]", classes="dialog-hint")
+            yield Static(
+                "[dim]↑↓ navigate · Enter run · / filter · ESC close[/]",
+                classes="dialog-hint",
+            )
+
+    def on_mount(self) -> None:
+        # Auto-focus the list so arrows + Enter work immediately. The filter
+        # Input stays hidden until the user presses `/`.
+        try:
+            self.query_one("#cmd-list", OptionList).focus()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _render_options(self, query: str) -> list[Option]:
         q = query.lower().strip()
@@ -156,5 +172,24 @@ class CommandModal(BaseModal):
             opt = lst.get_option_at_index(lst.highlighted or 0)
             if opt and opt.id:
                 self.dismiss(opt.id)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def action_reveal_filter(self) -> None:
+        """Show the filter Input row and focus it."""
+        try:
+            inp = self.query_one("#filter", Input)
+            inp.add_class("visible")
+            inp.focus()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_input_blurred(self, _event: Input.Blurred) -> None:
+        # When the filter loses focus, hide it again if empty so the modal
+        # returns to its clean list-only state.
+        try:
+            inp = self.query_one("#filter", Input)
+            if not inp.value:
+                inp.remove_class("visible")
         except Exception:  # noqa: BLE001
             pass
