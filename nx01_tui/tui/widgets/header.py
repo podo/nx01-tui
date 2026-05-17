@@ -27,6 +27,7 @@ class AppHeader(Horizontal):
     model: reactive[str] = reactive("—")
     connected: reactive[bool] = reactive(False)
     reconnecting: reactive[bool] = reactive(False)
+    auth_failed: reactive[bool] = reactive(False)
 
     def compose(self) -> ComposeResult:
         yield Static(self._brand_text(), id="brand")
@@ -45,8 +46,14 @@ class AppHeader(Horizontal):
     def watch_reconnecting(self, _value: bool) -> None:
         self._refresh_brand()
 
+    def watch_auth_failed(self, _value: bool) -> None:
+        self._refresh_brand()
+
     def _brand_text(self) -> str:
-        if self.reconnecting:
+        if self.auth_failed:
+            dot = "[$error]⬤[/]"
+            domain = f"[$error]{self.domain} (auth failed — check API key)[/]"
+        elif self.reconnecting:
             dot = "[$warning]⠋[/]"
             domain = f"[$warning]{self.domain} (reconnecting)[/]"
         elif self.connected:

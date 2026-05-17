@@ -58,9 +58,10 @@ async def test_help_modal_opens_and_closes():
     app = Nx01App("http://localhost:9999", api_key=None, flavors=["assistant"])
     async with app.run_test() as pilot:
         await pilot.pause(0.3)
-        await pilot.press("question_mark")
+        # ChatInput auto-focuses on boot; call the action directly to bypass
+        # the focused-input swallowing the printable key.
+        app.action_help()
         await pilot.pause(0.2)
-        # HelpModal is on the screen stack
         assert app.screen_stack[-1].__class__.__name__ == "HelpModal"
         await pilot.press("escape")
         await pilot.pause(0.2)

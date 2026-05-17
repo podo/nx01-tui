@@ -156,6 +156,24 @@ class Nx01App(App):
                 flavors = [f.get("name", "") for f in snapshot if isinstance(f, dict)]
             self.query_one(AppHeader).connected = True
             self._connected = True
+        except httpx.HTTPStatusError as exc:
+            # 401 / 403 are auth problems — distinguish from "server down".
+            if exc.response.status_code in (401, 403):
+                logger.warning("auth failed: %s", exc)
+                hdr = self.query_one(AppHeader)
+                hdr.connected = False
+                hdr.auth_failed = True
+                self.notify(
+                    "Authentication failed (401). Check --api-key — it may be wrong "
+                    "or truncated.",
+                    severity="error",
+                    timeout=8,
+                )
+            else:
+                logger.warning("flavor discovery failed: %s", exc)
+                self.notify(f"Discovery failed: {exc}", severity="warning")
+            if not flavors:
+                flavors = ["assistant", "operator"]
         except httpx.HTTPError as exc:
             logger.warning("flavor discovery failed: %s", exc)
             self.notify(f"Could not discover flavors: {exc}", severity="warning")
@@ -165,7 +183,19 @@ class Nx01App(App):
         for name in flavors:
             self._ensure_flavor(name)
 
+        # Auto-focus the active flavor's input so the user can type immediately.
+        self._focus_active_input()
+
         self.run_worker(self._sse_loop(), exclusive=True, name="sse", group="net")
+
+    def _focus_active_input(self) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
+            return
+        try:
+            self.query_one(f"#input-{flavor}", ChatInput).focus()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _ensure_flavor(self, name: str) -> None:
         if name in self._states:
@@ -208,6 +238,7 @@ class Nx01App(App):
         if message.kind == "connected":
             hdr.connected = True
             hdr.reconnecting = False
+            hdr.auth_failed = False
             self._connected = True
             self.notify("Connected", severity="information", timeout=2)
         elif message.kind == "disconnected":
@@ -623,6 +654,7 @@ class Nx01App(App):
         flavor = self._active_flavor()
         if flavor and flavor in self._states:
             self._refresh_status_bar(self._states[flavor])
+            self._focus_active_input()
 
     # ── Responsive ───────────────────────────────────────────────────
 
