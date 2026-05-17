@@ -63,6 +63,13 @@ def default_commands() -> list[CommandEntry]:
         CommandEntry("open_cost", "📊 Cost & Tokens", "Usage breakdown", "/cost", "System"),
         CommandEntry("open_config", "⚙ Configuration", "App settings", "/config", "System"),
         CommandEntry("help", "❓ Help", "Keyboard shortcuts", "?", "System"),
+        CommandEntry(
+            "open_debug",
+            "🐛 Debug",
+            "Raw SSE event log",
+            "ctrl+shift+d",
+            "System",
+        ),
         CommandEntry("quit", "🚪 Quit", "Exit the application", "q", "System"),
         # V2 (disabled)
         CommandEntry(
@@ -71,9 +78,6 @@ def default_commands() -> list[CommandEntry]:
         CommandEntry("v2_kanban", "📋 Kanban", "Board view (v2)", "/kanban", "V2", enabled=False),
         CommandEntry(
             "v2_browser", "🌐 Browser", "Screenshot view (v2)", "/browser", "V2", enabled=False
-        ),
-        CommandEntry(
-            "v2_debug", "🐛 Debug", "Raw SSE event log (v2)", "/debug", "V2", enabled=False
         ),
         CommandEntry(
             "v2_plugins", "🔌 Plugins", "Plugin manager (v2)", "/plugins", "V2", enabled=False

@@ -3,6 +3,7 @@
 from .base import BaseModal
 from .command_modal import CommandEntry, CommandModal, default_commands
 from .confirm_modal import ConfirmModal
+from .debug_modal import DebugModal
 from .help_modal import HelpModal
 from .memory_modal import MemoryModal
 from .permission_modal import PermissionModal
@@ -22,6 +23,7 @@ __all__ = [
     "ConfigModal",
     "ConfirmModal",
     "CostModal",
+    "DebugModal",
     "HelpModal",
     "MemoryModal",
     "ModelPickerModal",

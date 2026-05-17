@@ -2,7 +2,9 @@
 
 from .chat_input import ChatInput
 from .chevron import ExpandChevron
+from .code_block import CodeBlock
 from .conversation import ConversationView
+from .file_picker import FilePickerDropdown
 from .flavor_pane import FlavorPane
 from .header import AppHeader
 from .messages import AssistantMessage, UserMessage
@@ -10,6 +12,7 @@ from .search_bar import SearchBar
 from .sidebar import (
     ActivitySection,
     ContextSection,
+    McpSection,
     MemorySection,
     MonitorSidebar,
     SessionSection,
@@ -27,10 +30,13 @@ __all__ = [
     "AppHeader",
     "AssistantMessage",
     "ChatInput",
+    "CodeBlock",
     "ContextSection",
     "ConversationView",
     "ExpandChevron",
+    "FilePickerDropdown",
     "FlavorPane",
+    "McpSection",
     "MemorySection",
     "MonitorSidebar",
     "DEFAULT_SLASH_COMMANDS",
