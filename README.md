@@ -73,8 +73,8 @@ NX01 doctor — https://77.42.71.240.nip.io
 
 | Key | Action |
 |-----|--------|
-| `ctrl+p` | Command palette (list-focused; press `/` inside to reveal filter) |
-| `ctrl+s` | Sessions modal — Enter resumes (replays full history) / `f` fork / `e` rename / `d` delete |
+| `ctrl+p` | Command palette (list-focused; arrows + Enter to select) |
+| `ctrl+s` | Sessions modal — Enter resumes (replays full history) / `f` fork / `d` delete |
 | `ctrl+m` | Memory modal — agent + user stores |
 | `ctrl+k` | Skills modal |
 | `ctrl+t` | Tools modal |
@@ -92,8 +92,8 @@ NX01 doctor — https://77.42.71.240.nip.io
 | `↑ / ↓` | Navigate the visible slash / file dropdown (else move cursor) |
 | `Escape` | Dismiss visible dropdown |
 | `?` | Help overlay (auto-generated keybinding table) |
-| `q` | Quit |
-| `y` / `Y` | Yank focused / last code block |
+| `ctrl+q` | Quit |
+| `ctrl+y` / `ctrl+shift+y` | Yank focused / last code block |
 | `x` or `space` | Expand / collapse focused block (keyboard) |
 | Mouse click on header row | Expand / collapse Thinking / Tool / Skill block |
 | `@filename` (in input) | File picker dropdown |
