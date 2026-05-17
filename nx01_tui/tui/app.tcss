@@ -9,9 +9,36 @@ Screen {
 
 AppHeader  { dock: top;    height: 1; background: $surface; }
 StatusBar  { dock: bottom; height: 1; background: $surface; }
-Footer     { dock: bottom; }
 
 TabbedContent { height: 1fr; }
+
+/* Solid coloured underline for the active tab (#29 item 26) — replaces
+   the default `╸━━━╺` rounded pill which read like a 2D bar chart. */
+TabbedContent Tabs > Underline > .underline--bar {
+    color: $primary;
+    background: $primary;
+}
+
+/* ── Shared OptionList chrome (#29 item 5, QA-tightened) ──────────
+   The `▊` rail visible on every row was OptionList's own `tall`
+   left border — not a focus indicator. Killing the border + tinting
+   the highlighted row gives a clean flat list across all modals.   */
+
+OptionList {
+    border: none;
+    background: $surface;
+    padding: 0 1;
+}
+OptionList:focus {
+    border: none;
+    background-tint: $foreground 5%;
+}
+OptionList > .option-list--option-highlighted {
+    background: $boost;
+    color: $text;
+    text-style: bold;
+}
+OptionList > .option-list--option { padding: 0 1; }
 
 /* ── FlavorPane state-class colors ──────────────────────────────── */
 /* (border colors animate automatically via transition rule on FlavorPane) */
@@ -40,8 +67,8 @@ ChatInput {
 }
 ChatInput:focus { border: round $primary; }
 
-SearchBar         { display: none; dock: top; height: 1; border: round $primary; }
-SearchBar.visible { display: block; }
+/* SearchBar's DEFAULT_CSS owns dock/height/border — don't override here
+   (QA item 2: the previous `height: 1` shadow squashed the round border). */
 
 /* ── Sidebar ────────────────────────────────────────────────────── */
 
@@ -51,8 +78,9 @@ MonitorSidebar {
     border-left: solid $panel;
     background: $surface;
 }
-MonitorSidebar.hidden     { display: none; }
-MonitorSidebar.icon-strip { width: 3; }
+MonitorSidebar.hidden { display: none; }
+/* `.icon-strip` removed in QA pass — class is never applied since
+   item 3 collapsed the responsive mode to "hide entirely below 130 cols". */
 
 /* ── Modals (overlay layer) ─────────────────────────────────────── */
 

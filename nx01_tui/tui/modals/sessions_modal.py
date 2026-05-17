@@ -25,7 +25,7 @@ class SessionEntry:
 
 @dataclass
 class SessionAction:
-    action: str  # resume | fork | rename | delete | new
+    action: str  # resume | fork | delete | new
     session_id: str = ""
     flavor: str = ""
     payload: dict = field(default_factory=dict)
@@ -46,11 +46,12 @@ class SessionsModal(BaseModal):
         Binding("enter", "resume", "Resume", show=True),
         Binding("r", "resume", "Resume", show=False),
         Binding("f", "fork", "Fork", show=True),
-        Binding("e", "rename", "Rename", show=True),
         Binding("d", "delete", "Delete", show=True),
         Binding("n", "new_session", "New", show=True),
         # `/` reveals the (hidden) filter input.
         Binding("slash", "reveal_filter", show=False),
+        # `e rename` removed in QA pass — no rename handler exists on the App
+        # side. Re-add together with an implementation in v1.1.
     ]
 
     def __init__(self, sessions: list[SessionEntry], **kwargs: object) -> None:
@@ -64,7 +65,7 @@ class SessionsModal(BaseModal):
             yield Input(placeholder="Filter sessions…", id="filter")
             yield OptionList(*self._render_options(""), id="session-list")
             yield Static(
-                "[dim]↑↓ navigate · Enter resume · f fork · e rename · d delete · n new · "
+                "[dim]↑↓ navigate · Enter resume · f fork · d delete · n new · "
                 "/ filter · ESC close[/]",
                 classes="dialog-hint",
             )
@@ -131,11 +132,6 @@ class SessionsModal(BaseModal):
         sel = self._selected()
         if sel:
             self.dismiss(SessionAction("fork", session_id=sel[0], flavor=sel[1]))
-
-    def action_rename(self) -> None:
-        sel = self._selected()
-        if sel:
-            self.dismiss(SessionAction("rename", session_id=sel[0], flavor=sel[1]))
 
     def action_delete(self) -> None:
         sel = self._selected()

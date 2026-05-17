@@ -1,4 +1,9 @@
-"""StatusBar — bottom docked bar showing agent state, tokens, shortcuts."""
+"""StatusBar — bottom bar showing agent state + active flavor (#29 item 1).
+
+Replaces Textual's `Footer`. Sidebar already surfaces context-window size and
+the help modal surfaces shortcuts, so this bar is intentionally minimal:
+state on the left, flavor on the right.
+"""
 
 from __future__ import annotations
 
@@ -10,12 +15,12 @@ from textual.widgets import Static
 from ..state import AgentState
 
 _STATE_DISPLAY: dict[AgentState, tuple[str, str]] = {
-    AgentState.IDLE: ("● Ready", "dim"),
-    AgentState.THINKING: ("⠋ Thinking…", "$warning"),
-    AgentState.STREAMING: ("▌ Writing…", "$primary"),
-    AgentState.TOOL_CALL: ("✻ Tool call", "$success"),
-    AgentState.DONE: ("✓ Done", "$success"),
-    AgentState.ERROR: ("✗ Error", "$error"),
+    AgentState.IDLE: ("Ready", "dim"),
+    AgentState.THINKING: ("Thinking…", "$warning"),
+    AgentState.STREAMING: ("Writing…", "$primary"),
+    AgentState.TOOL_CALL: ("Tool call", "$success"),
+    AgentState.DONE: ("Done", "$success"),
+    AgentState.ERROR: ("Error", "$error"),
 }
 
 
@@ -28,10 +33,8 @@ class StatusBar(Horizontal):
         padding: 0 1;
     }
     StatusBar #state    { width: auto; }
-    StatusBar #spacer-l { width: 1fr; }
-    StatusBar #tokens   { width: auto; color: $text-muted; }
-    StatusBar #spacer-r { width: 1fr; }
-    StatusBar #shortcuts{ width: auto; color: $text-muted; }
+    StatusBar #spacer   { width: 1fr; }
+    StatusBar #flavor   { width: auto; color: $text-muted; }
     """
 
     state: reactive[AgentState] = reactive(AgentState.IDLE)
@@ -41,30 +44,25 @@ class StatusBar(Horizontal):
 
     def compose(self) -> ComposeResult:
         yield Static(self._state_text(), id="state")
-        yield Static("", id="spacer-l")
-        yield Static(self._tokens_text(), id="tokens")
-        yield Static("", id="spacer-r")
-        yield Static("[dim]y copy · ctrl+f search · x expand[/]", id="shortcuts")
+        yield Static("", id="spacer")
+        yield Static(self._flavor_text(), id="flavor")
 
     def watch_state(self, _new: AgentState) -> None:
         self._refresh_state()
 
     def watch_flavor(self, _new: str) -> None:
-        self._refresh_state()
+        self._refresh_flavor()
 
     def watch_tokens(self, _new: int) -> None:
-        self._refresh_tokens()
+        # Tokens still tracked for backward-compat; surfaced by the sidebar.
+        pass
 
     def _state_text(self) -> str:
         label, color = _STATE_DISPLAY.get(self.state, _STATE_DISPLAY[AgentState.IDLE])
-        flavor_part = f" [dim]· {self.flavor}[/]" if self.flavor else ""
-        return f"[{color}]{label}[/]{flavor_part}"
+        return f"[{color}]{label}[/]"
 
-    def _tokens_text(self) -> str:
-        if not self.token_limit:
-            return ""
-        pct = (self.tokens / self.token_limit) * 100
-        return f"[dim]{self.tokens:,} / {self.token_limit:,} · {pct:.0f}%[/]"
+    def _flavor_text(self) -> str:
+        return f"[dim]{self.flavor}[/]" if self.flavor else ""
 
     def _refresh_state(self) -> None:
         try:
@@ -72,8 +70,8 @@ class StatusBar(Horizontal):
         except Exception:  # noqa: BLE001
             pass
 
-    def _refresh_tokens(self) -> None:
+    def _refresh_flavor(self) -> None:
         try:
-            self.query_one("#tokens", Static).update(self._tokens_text())
+            self.query_one("#flavor", Static).update(self._flavor_text())
         except Exception:  # noqa: BLE001
             pass

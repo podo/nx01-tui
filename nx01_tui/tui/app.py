@@ -24,7 +24,7 @@ import httpx
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.message import Message
-from textual.widgets import Footer, TabbedContent, TabPane
+from textual.widgets import TabbedContent, TabPane
 
 from .client import ConnectionConfig, Nx01Client, stream_with_backoff
 from .events import (
@@ -89,21 +89,25 @@ class Nx01App(App):
     CSS_PATH = "app.tcss"
 
     BINDINGS = [
-        Binding("ctrl+p", "command_palette", "Commands", show=True),
-        Binding("ctrl+s", "open_sessions", "Sessions", show=True),
-        Binding("ctrl+m", "open_memory", "Memory", show=True),
-        Binding("ctrl+k", "open_skills", "Skills", show=False),
-        Binding("ctrl+t", "open_tools", "Tools", show=False),
-        Binding("ctrl+n", "new_session", "New", show=False),
-        Binding("ctrl+b", "toggle_sidebar", "Sidebar", show=True),
-        Binding("ctrl+f", "search", "Search", show=True),
-        Binding("ctrl+c", "stop_generation", "Stop", show=True),
+        # All app-level shortcuts use priority=True so TextArea/Input defaults
+        # in the focused ChatInput don't swallow them (#29 QA N1 / N2).
+        Binding("ctrl+p", "command_palette", "Commands", show=True, priority=True),
+        Binding("ctrl+s", "open_sessions", "Sessions", show=True, priority=True),
+        Binding("ctrl+m", "open_memory", "Memory", show=True, priority=True),
+        Binding("ctrl+k", "open_skills", "Skills", show=False, priority=True),
+        Binding("ctrl+t", "open_tools", "Tools", show=False, priority=True),
+        Binding("ctrl+n", "new_session", "New", show=False, priority=True),
+        Binding("ctrl+b", "toggle_sidebar", "Sidebar", show=True, priority=True),
+        Binding("ctrl+f", "search", "Search", show=True, priority=True),
+        Binding("ctrl+c", "stop_generation", "Stop", show=True, priority=True),
         Binding("question_mark", "help", "Help", show=True),
-        Binding("q", "request_quit", "Quit", show=True),
+        Binding("ctrl+q", "request_quit", "Quit", show=True, priority=True),
         Binding("d", "toggle_dark", "Theme", show=False),
-        Binding("ctrl+shift+d", "open_debug", "Debug", show=False),
-        Binding("y", "yank_focused", "Copy", show=False),
-        Binding("Y", "yank_last_code", "Copy last", show=False),
+        Binding("ctrl+shift+d", "open_debug", "Debug", show=False, priority=True),
+        # Yank moved to ctrl+y / ctrl+shift+y (priority) so TextArea doesn't
+        # treat plain y/Y as typed characters (QA N2). Plain y/Y dropped.
+        Binding("ctrl+y", "yank_focused", "Copy", show=False, priority=True),
+        Binding("ctrl+shift+y", "yank_last_code", "Copy last", show=False, priority=True),
         # Flavor switching — priority so TextArea's Tab handling doesn't
         # swallow it when ChatInput is focused. (W3 of #26)
         Binding("tab", "switch_flavor", "Next flavor", show=True, priority=True),
@@ -149,7 +153,6 @@ class Nx01App(App):
         yield AppHeader(id="app-header")
         yield TabbedContent(id="flavor-tabs")
         yield StatusBar(id="status-bar")
-        yield Footer()
 
     async def on_mount(self) -> None:
         domain = urlparse(self.base_url).netloc or self.base_url
@@ -169,8 +172,14 @@ class Nx01App(App):
                 flavors = list(snapshot.keys())
             elif isinstance(snapshot, list):
                 flavors = [f.get("name", "") for f in snapshot if isinstance(f, dict)]
-            self.query_one(AppHeader).connected = True
+            hdr = self.query_one(AppHeader)
+            hdr.connected = True
             self._connected = True
+            # Auto-pick the first available model so the header isn't blank
+            # in the steady state (#29 item 18).
+            picked = self._pick_first_model(snapshot)
+            if picked:
+                hdr.model = picked
         except httpx.HTTPStatusError as exc:
             # 401 / 403 are auth problems — distinguish from "server down".
             if exc.response.status_code in (401, 403):
@@ -205,6 +214,23 @@ class Nx01App(App):
         await self._bootstrap_slash_dropdowns(flavors)
 
         self.run_worker(self._sse_loop(), exclusive=True, name="sse", group="net")
+
+    @staticmethod
+    def _pick_first_model(snapshot) -> str:
+        """Extract the first non-empty `model` from a get_flavors() result.
+
+        Tolerates both shapes — dict[str, dict] and list[dict].
+        """
+        items: list[dict] = []
+        if isinstance(snapshot, dict):
+            items = list(snapshot.values())
+        elif isinstance(snapshot, list):
+            items = [f for f in snapshot if isinstance(f, dict)]
+        for f in items:
+            m = (f or {}).get("model")
+            if isinstance(m, str) and m:
+                return m
+        return ""
 
     async def _bootstrap_slash_dropdowns(self, flavors: list[str]) -> None:
         """Fetch commands once + per-flavor skills/tools; feed each dropdown.
@@ -741,6 +767,30 @@ class Nx01App(App):
 
         self._debug_modal = DebugModal(list(self._debug_buffer))
         self.push_screen(self._debug_modal, on_dismissed)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Yield ctrl+c / ctrl+y back to whichever modal owns focus.
+
+        - When a `ModalScreen` is on top (Sessions filter Input, DebugModal
+          with its own `ctrl+y → yank_buffer`, etc.), return False so the
+          modal's own bindings + native Input/TextArea copy work normally.
+        - In the main pane (no modal), the App actions fire as designed —
+          ctrl+c stops generation, ctrl+y yanks the focused chunk, even
+          when ChatInput owns focus. See QA-REVERIFY §R2/R3.
+        """
+        if action not in ("stop_generation", "yank_focused", "yank_last_code"):
+            return True
+        if self._modal_on_top():
+            return False
+        return True
+
+    def _modal_on_top(self) -> bool:
+        try:
+            from textual.screen import ModalScreen
+
+            return isinstance(self.screen, ModalScreen)
+        except Exception:  # noqa: BLE001
+            return False
 
     def action_request_quit(self) -> None:
         self.exit()

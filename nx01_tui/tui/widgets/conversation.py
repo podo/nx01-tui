@@ -28,7 +28,7 @@ _FENCE_RE = re.compile(r"```(\w+)?\n(.*?)\n```", re.DOTALL)
 _EMPTY_HINT = (
     "[bold]Welcome to nx01-tui[/]\n\n"
     "[dim]Type a message and press [bold]Enter[/] to send · [bold]Shift+Enter[/] for newline.\n"
-    "[bold]ctrl+p[/] command palette · [bold]?[/] help · [bold]q[/] quit[/]"
+    "[bold]ctrl+p[/] command palette · [bold]?[/] help · [bold]ctrl+q[/] quit[/]"
 )
 
 

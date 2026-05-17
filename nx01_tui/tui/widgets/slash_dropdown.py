@@ -21,7 +21,9 @@ DEFAULT_SLASH_COMMANDS: list[tuple[str, str]] = [
     ("/resume", "resume a session"),
     ("/fork", "fork from current session"),
     ("/sessions", "list sessions"),
-    ("/title", "rename current session"),
+    # /title kept in the default list for hermes backwards-compat — many
+    # backend commands recognise it as a session-title setter, not a rename.
+    ("/title", "set current session title"),
     ("/history", "scrollback"),
     ("/context", "show context window usage"),
     ("/compact", "compact conversation history"),
@@ -130,18 +132,35 @@ class SlashDropdown(OptionList):
         self.candidates = merged or list(self.candidates)
         self._populate("")
 
+    # Category → semantic colour (#29 item 12).
     _CATEGORY_LABEL = {"cmd": "cmd", "skill": "skill", "tool": "tool"}
+    _CATEGORY_COLOR = {
+        "cmd": "$primary",
+        "skill": "$accent",
+        "tool": "$success",
+    }
 
     def _populate(self, query: str) -> None:
         self.clear_options()
         q = query.lower().lstrip("/")
+        # Filter first so the insertion column width matches what's visible.
+        visible: list[tuple[str, str, str]] = []
         for entry in self.candidates:
             insertion, desc, category = entry
-            hay = (insertion + " " + desc).lower()
-            if q and q not in hay:
+            if q and q not in (insertion + " " + desc).lower():
                 continue
+            visible.append(entry)
+        # Column rhythm (#29 item 23): pad insertion to a stable width per
+        # the longest visible entry, cap at 32 cells.
+        max_w = min(32, max((len(i) for i, _, _ in visible), default=10))
+        for insertion, desc, category in visible:
             cat_label = self._CATEGORY_LABEL.get(category, category)
-            label = f"[bold]{insertion}[/]  [dim]{desc}[/]  [$accent]{cat_label}[/]"
+            cat_color = self._CATEGORY_COLOR.get(category, "$accent")
+            padded = insertion.ljust(max_w)
+            # Render the category as a coloured `( cat )` chip — parens
+            # have no special meaning in Rich, so no escape pitfalls (QA R1).
+            chip = f"[{cat_color}]( {cat_label:<5})[/]"
+            label = f"[bold]{padded}[/]  [dim]{desc}[/]  {chip}"
             self.add_option(Option(label, id=insertion))
 
     def update_for_text(self, text: str) -> None:

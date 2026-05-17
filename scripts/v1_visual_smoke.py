@@ -106,6 +106,14 @@ async def _settle(app, pilot, secs: float = 1.5) -> None:
 def _screenshot(app, n: int, slug: str) -> str:
     path = ARTIFACTS / f"s{n:02d}_{slug}.svg"
     app.save_screenshot(str(path))
+    # Decode both `&#x27;` and `&apos;` → literal `'` (QA-tightened #31).
+    try:
+        raw = path.read_text(encoding="utf-8")
+        cleaned = raw.replace("&#x27;", "'").replace("&apos;", "'")
+        if cleaned != raw:
+            path.write_text(cleaned, encoding="utf-8")
+    except OSError:
+        pass
     return str(path)
 
 
@@ -322,7 +330,7 @@ async def run() -> Report:
         files.update_for_text("")
         await pilot.pause(0.1)
 
-        # ── Scenario 6: Command palette list-focused ────────────────
+        # ── Scenario 6: Command palette list-focused (no filter, no V2) ─
         await pilot.press("ctrl+p")
         await pilot.pause(0.4)
         cmd_modal = app.screen
@@ -332,13 +340,21 @@ async def run() -> Report:
 
         is_cmd_modal = isinstance(cmd_modal, CommandModal)
         list_focused = False
-        filter_hidden = False
+        no_filter = False
+        no_v2 = False
         emoji_free = False
         if is_cmd_modal:
             lst = cmd_modal.query_one("#cmd-list", OptionList)
-            inp = cmd_modal.query_one("#filter", Input)
             list_focused = lst.has_focus
-            filter_hidden = not inp.has_class("visible")
+            # #29 item 14 — filter Input fully removed.
+            no_filter = not cmd_modal.query(Input)
+            # V2 rows hidden.
+            ids = [
+                lst.get_option_at_index(i).id
+                for i in range(lst.option_count)
+                if lst.get_option_at_index(i).id
+            ]
+            no_v2 = not any(opt and opt.startswith("v2_") for opt in ids)
             # No emoji in any visible option label.
             opts_text = " ".join(
                 str(cmd_modal.query_one("#cmd-list", OptionList).get_option_at_index(i).prompt)
@@ -366,28 +382,30 @@ async def run() -> Report:
             )
         svg = _screenshot(app, 6, "command_modal")
         step(
-            "Command palette — list-focused, filter hidden, no emojis",
-            "Ctrl+P opens the modal with the OptionList focused, the filter "
-            "Input row hidden, and every option label rendered without emoji.",
-            passed=is_cmd_modal and list_focused and filter_hidden and emoji_free,
+            "Command palette — list-focused, no filter, no V2 rows, no emojis",
+            "Ctrl+P opens the modal with the OptionList focused. Filter Input "
+            "removed entirely (#29 item 14). V2-marked actions hidden.",
+            passed=is_cmd_modal and list_focused and no_filter and no_v2 and emoji_free,
             svg=svg,
-            detail=f"is_cmd_modal={is_cmd_modal} list_focused={list_focused} "
-            f"filter_hidden={filter_hidden} emoji_free={emoji_free}",
+            detail=(
+                f"is_cmd_modal={is_cmd_modal} list_focused={list_focused} "
+                f"no_filter={no_filter} no_v2={no_v2} emoji_free={emoji_free}"
+            ),
         )
 
-        # ── Scenario 7: Command palette `/` reveals filter ──────────
+        # ── Scenario 7: Command palette is filter-less — second screenshot
+        # (kept for stable scenario count; verifies no `/` keystroke leaks).
         if is_cmd_modal:
             await pilot.press("slash")
             await pilot.pause(0.2)
-            inp = cmd_modal.query_one("#filter", Input)
-            filter_visible = inp.has_class("visible") and inp.has_focus
+            still_no_filter = not cmd_modal.query(Input)
         else:
-            filter_visible = False
-        svg = _screenshot(app, 7, "command_modal_filter")
+            still_no_filter = False
+        svg = _screenshot(app, 7, "command_modal_no_filter_after_slash")
         step(
-            "Command palette — `/` reveals the hidden filter row",
-            "Pressing `/` inside the modal shows the filter Input and gives it focus.",
-            passed=filter_visible,
+            "Command palette — `/` no-op (filter is gone)",
+            "Pressing `/` inside the modal does NOT spawn a filter input now.",
+            passed=still_no_filter,
             svg=svg,
         )
         await pilot.press("escape")
@@ -516,16 +534,17 @@ async def run() -> Report:
             detail=f"expanded={expanded}",
         )
 
-        # ── Scenario 13: Sidebar narrow (icon-strip) ─────────────────
+        # ── Scenario 13: Sidebar narrow — hidden entirely (#29 item 3) ─
         sb = app.query_one(MonitorSidebar)
         sb.apply_terminal_width(110)
         await pilot.pause(0.1)
-        icon_strip = sb.has_class("icon-strip")
-        svg = _screenshot(app, 13, "sidebar_icon_strip")
+        hidden = sb.has_class("hidden")
+        svg = _screenshot(app, 13, "sidebar_hidden_narrow")
         step(
-            "Responsive sidebar — icon-strip at 110 cols",
-            "Narrow terminal collapses the sidebar to an icon strip.",
-            passed=icon_strip,
+            "Responsive sidebar — hidden at 110 cols (icon-strip removed)",
+            "Narrow terminal hides the sidebar entirely; no empty icon-strip "
+            "sliver. StatusBar advertises `ctrl+b` to bring it back.",
+            passed=hidden,
             svg=svg,
         )
 

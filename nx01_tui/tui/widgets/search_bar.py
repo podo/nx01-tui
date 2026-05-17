@@ -16,7 +16,7 @@ class SearchBar(Input):
     SearchBar {
         display: none;
         dock: top;
-        height: 1;
+        height: 3;
         border: round $primary;
         background: $surface;
     }
@@ -25,8 +25,10 @@ class SearchBar(Input):
 
     BINDINGS = [
         Binding("escape", "dismiss", "Dismiss", show=False),
-        Binding("ctrl+n", "next_match", "Next", show=False),
-        Binding("ctrl+p", "prev_match", "Prev", show=False),
+        # Enter → next, Shift+Enter → prev (#29 item 9). Avoids collision
+        # with the app's ctrl+n / ctrl+p bindings.
+        Binding("enter", "next_match", "Next", show=False),
+        Binding("shift+enter", "prev_match", "Prev", show=False),
     ]
 
     class Query(Message):
