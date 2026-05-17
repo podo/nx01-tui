@@ -81,7 +81,10 @@ NX01 doctor — https://77.42.71.240.nip.io
 | `ctrl+f` | Search in conversation |
 | `ctrl+shift+d` | Debug modal — raw SSE event log |
 | `ctrl+c` | Stop generation |
-| `ctrl+j` | Send message |
+| `Enter` | Send message |
+| `Shift+Enter` | Newline (modern terminals — Kitty / WezTerm / Ghostty / iTerm2) |
+| `Alt+Enter` | Newline (Terminal.app fallback) |
+| `ctrl+j` | Send message (universal fallback) |
 | `Tab` / `Shift+Tab` | Cycle flavor tabs |
 | `?` | Help overlay (auto-generated keybinding table) |
 | `q` | Quit |
