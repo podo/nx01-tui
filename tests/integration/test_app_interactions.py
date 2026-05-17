@@ -21,16 +21,19 @@ from nx01_tui.tui.widgets import (
 from tests.fixtures.sample_events import chunk, permission_required, thinking, turn_done
 
 
+async def _settle(app, pilot, secs: float = 1.0) -> None:
+    """Pause for mount + cancel SSE workers so retries don't race tests."""
+    await pilot.pause(secs)
+    for w in list(app.workers):
+        w.cancel()
+    await pilot.pause(0.2)
+
+
 @pytest.mark.asyncio
 async def test_connection_status_message_updates_header():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
-        # Cancel SSE worker — it would race the test by posting its own
-        # 'disconnected' messages as the backoff retries fail.
-        for w in list(app.workers):
-            w.cancel()
-        await pilot.pause(0.2)
+        await _settle(app, pilot)
         hdr = app.query_one(AppHeader)
 
         app.post_message(ConnectionStatusMessage("connected"))
@@ -52,7 +55,7 @@ async def test_connection_status_message_updates_header():
 async def test_sse_message_routes_to_dispatcher():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         app.post_message(SseMessage(parse_event(chunk(text="streaming chunk"))))
         await pilot.pause(0.1)
         state = app._states["assistant"]
@@ -63,7 +66,7 @@ async def test_sse_message_routes_to_dispatcher():
 async def test_on_chat_input_submitted_drives_send():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         sent: list[str] = []
 
         async def fake_send(flavor: str, text: str):
@@ -83,7 +86,7 @@ async def test_on_chat_input_submitted_drives_send():
 async def test_slash_dropdown_completed_writes_input():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         app.on_slash_dropdown_completed(SlashDropdown.Completed("/memory"))
         await pilot.pause(0.05)
         inp = app.query_one("#input-assistant", ChatInput)
@@ -94,7 +97,7 @@ async def test_slash_dropdown_completed_writes_input():
 async def test_action_toggle_sidebar_flips_class():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         pane = app._panes["assistant"]
         assert not pane.sidebar.has_class("hidden")
         app.action_toggle_sidebar()
@@ -107,7 +110,7 @@ async def test_action_toggle_sidebar_flips_class():
 async def test_action_search_shows_search_bar():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         app.action_search()
         await pilot.pause(0.05)
         bar = app.query_one("#search-assistant", SearchBar)
@@ -118,7 +121,7 @@ async def test_action_search_shows_search_bar():
 async def test_action_switch_flavor_rotates_tabs():
     app = Nx01App("http://localhost:9999", flavors=["a", "b", "c"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         active_before = app._active_flavor()
         app.action_switch_flavor()
         await pilot.pause(0.05)
@@ -129,7 +132,7 @@ async def test_action_switch_flavor_rotates_tabs():
 async def test_action_yank_focused_copies_last_chunk(monkeypatch):
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         copied: list[str] = []
         monkeypatch.setattr(app, "copy_to_clipboard", lambda txt: copied.append(txt))
         app._states["assistant"].messages.append({"type": "chunk", "text": "response body"})
@@ -141,7 +144,7 @@ async def test_action_yank_focused_copies_last_chunk(monkeypatch):
 async def test_action_yank_last_code(monkeypatch):
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         copied: list[str] = []
         monkeypatch.setattr(app, "copy_to_clipboard", lambda txt: copied.append(txt))
         app._states["assistant"].messages.append(
@@ -155,7 +158,7 @@ async def test_action_yank_last_code(monkeypatch):
 async def test_action_new_session_clears_state():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         app._states["assistant"].messages.append({"type": "chunk", "text": "old"})
         await app.action_new_session()
         assert app._states["assistant"].messages == []
@@ -165,7 +168,7 @@ async def test_action_new_session_clears_state():
 async def test_status_bar_follows_active_tab():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         app._dispatch_event(parse_event(thinking()))
         await pilot.pause(0.1)
         bar = app.query_one(StatusBar)
@@ -180,7 +183,7 @@ async def test_status_bar_follows_active_tab():
 async def test_on_resize_applies_sidebar_classes():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         sb = app._panes["assistant"].sidebar
         sb.apply_terminal_width(80)
         assert sb.has_class("hidden")
@@ -193,7 +196,7 @@ async def test_always_allow_set_skips_modal(monkeypatch):
     """An `always_allow` tool short-circuits the modal."""
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         resolved: list[tuple[str, str]] = []
 
         async def fake_resolve(permission_id: str, decision: str) -> None:
@@ -202,7 +205,7 @@ async def test_always_allow_set_skips_modal(monkeypatch):
         monkeypatch.setattr(app.client, "resolve_permission", fake_resolve)
         app._always_allow_tools.add("bash")
         app._dispatch_event(parse_event(permission_required(tool="bash", permission_id="p1")))
-        await pilot.pause(1.0)
+        await _settle(app, pilot)
         assert ("p1", "allow") in resolved
         # No modal was pushed.
         assert app.screen.__class__.__name__ != "PermissionModal"
