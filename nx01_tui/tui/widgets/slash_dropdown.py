@@ -21,7 +21,9 @@ DEFAULT_SLASH_COMMANDS: list[tuple[str, str]] = [
     ("/resume", "resume a session"),
     ("/fork", "fork from current session"),
     ("/sessions", "list sessions"),
-    ("/title", "rename current session"),
+    # /title kept in the default list for hermes backwards-compat — many
+    # backend commands recognise it as a session-title setter, not a rename.
+    ("/title", "set current session title"),
     ("/history", "scrollback"),
     ("/context", "show context window usage"),
     ("/compact", "compact conversation history"),
@@ -155,11 +157,10 @@ class SlashDropdown(OptionList):
             cat_label = self._CATEGORY_LABEL.get(category, category)
             cat_color = self._CATEGORY_COLOR.get(category, "$accent")
             padded = insertion.ljust(max_w)
-            # Rich literal brackets need `\[` / `\]` escapes (#29 QA item 12).
-            label = (
-                f"[bold]{padded}[/]  [dim]{desc}[/]  "
-                rf"[{cat_color}]\[ {cat_label:<5}\][/]"
-            )
+            # Render the category as a coloured `( cat )` chip — parens
+            # have no special meaning in Rich, so no escape pitfalls (QA R1).
+            chip = f"[{cat_color}]( {cat_label:<5})[/]"
+            label = f"[bold]{padded}[/]  [dim]{desc}[/]  {chip}"
             self.add_option(Option(label, id=insertion))
 
     def update_for_text(self, text: str) -> None:

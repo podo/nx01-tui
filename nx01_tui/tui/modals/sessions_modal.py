@@ -25,7 +25,7 @@ class SessionEntry:
 
 @dataclass
 class SessionAction:
-    action: str  # resume | fork | rename | delete | new
+    action: str  # resume | fork | delete | new
     session_id: str = ""
     flavor: str = ""
     payload: dict = field(default_factory=dict)

@@ -768,6 +768,30 @@ class Nx01App(App):
         self._debug_modal = DebugModal(list(self._debug_buffer))
         self.push_screen(self._debug_modal, on_dismissed)
 
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Yield ctrl+c / ctrl+y back to whichever modal owns focus.
+
+        - When a `ModalScreen` is on top (Sessions filter Input, DebugModal
+          with its own `ctrl+y → yank_buffer`, etc.), return False so the
+          modal's own bindings + native Input/TextArea copy work normally.
+        - In the main pane (no modal), the App actions fire as designed —
+          ctrl+c stops generation, ctrl+y yanks the focused chunk, even
+          when ChatInput owns focus. See QA-REVERIFY §R2/R3.
+        """
+        if action not in ("stop_generation", "yank_focused", "yank_last_code"):
+            return True
+        if self._modal_on_top():
+            return False
+        return True
+
+    def _modal_on_top(self) -> bool:
+        try:
+            from textual.screen import ModalScreen
+
+            return isinstance(self.screen, ModalScreen)
+        except Exception:  # noqa: BLE001
+            return False
+
     def action_request_quit(self) -> None:
         self.exit()
 

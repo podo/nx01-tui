@@ -32,7 +32,7 @@ def default_commands() -> list[CommandEntry]:
         CommandEntry(
             "open_sessions",
             "Sessions",
-            "Resume · fork · rename · delete",
+            "Resume · fork · delete",
             "ctrl+s",
             "Quick Actions",
         ),
