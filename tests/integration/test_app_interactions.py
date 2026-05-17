@@ -69,7 +69,7 @@ async def test_on_chat_input_submitted_drives_send():
         await _settle(app, pilot)
         sent: list[str] = []
 
-        async def fake_send(flavor: str, text: str):
+        async def fake_send(flavor: str, text: str, session_id: str | None = None):
             sent.append(f"{flavor}:{text}")
             return {"correlation_id": "c1"}
 

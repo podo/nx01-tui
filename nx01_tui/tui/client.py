@@ -115,6 +115,21 @@ class Nx01Client:
             logger.warning("/sessions not yet exposed by backend")
             return []
 
+    async def get_session_messages(
+        self, session_id: str, flavor: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch the full row stream for a session (W7 in podo/nx01-tui#26).
+
+        Backend route (nx01#94): GET /sessions/{id}/messages.
+        Returns the list of message rows in chronological order. The TUI
+        adapts row → widget at render time.
+        """
+        params = {"flavor": flavor} if flavor else {}
+        r = await self._client.get(f"/sessions/{session_id}/messages", params=params)
+        r.raise_for_status()
+        body = r.json()
+        return body.get("messages", []) if isinstance(body, dict) else []
+
     async def resume_session(self, session_id: str) -> dict[str, Any]:
         r = await self._client.post(f"/sessions/{session_id}/resume")
         r.raise_for_status()

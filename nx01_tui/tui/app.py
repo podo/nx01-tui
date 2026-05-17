@@ -134,6 +134,9 @@ class Nx01App(App):
         self._panes: dict[str, FlavorPane] = {}
         self._initial_flavors = flavors or []
         self._connected = False
+        # Per-flavor active session — set after resume so the next /message
+        # post appends to that session instead of starting a new one (W7).
+        self._active_session_id: dict[str, str] = {}
         self._current_correlation_id: str | None = None
         self._always_allow_tools: set[str] = set()
         # Rolling SSE event log — fed to DebugModal on demand.
@@ -391,8 +394,14 @@ class Nx01App(App):
 
     async def _send_message(self, flavor: str, text: str) -> None:
         try:
-            response = await self.client.send_message(flavor, text)
+            session_id = self._active_session_id.get(flavor)
+            response = await self.client.send_message(flavor, text, session_id=session_id)
             self._current_correlation_id = response.get("correlation_id")
+            # Remember the session id the server allocated so the next turn
+            # continues to append to the same session (W7).
+            new_sid = response.get("session_id")
+            if new_sid:
+                self._active_session_id[flavor] = new_sid
         except httpx.HTTPError as exc:
             self._states[flavor].set_error(str(exc))
             self._panes[flavor].set_state(AgentState.ERROR)
@@ -516,8 +525,7 @@ class Nx01App(App):
     async def _handle_session_action(self, action: SessionAction) -> None:
         try:
             if action.action == "resume":
-                await self.client.resume_session(action.session_id)
-                self.notify(f"Resumed {action.session_id[:8]}")
+                await self._resume_session(action)
             elif action.action == "fork":
                 await self.client.fork_session(action.session_id)
                 self.notify(f"Forked {action.session_id[:8]}")
@@ -532,6 +540,99 @@ class Nx01App(App):
                 self.notify("New session started")
         except Exception as exc:  # noqa: BLE001
             self.notify(f"Session action failed: {exc}", severity="error")
+
+    async def _resume_session(self, action: SessionAction) -> None:
+        """Server-side resume + replay history into ConversationView (W7).
+
+        Cross-flavor: if the session lives in a different flavor than the
+        active tab, switch tabs first (D7).
+        """
+        flavor = action.flavor or self._active_flavor()
+        if not flavor:
+            self.notify("No active flavor; can't resume", severity="warning")
+            return
+
+        # Switch tab if needed before we touch any of the flavor's UI.
+        if self._active_flavor() != flavor:
+            try:
+                tabs = self.query_one("#flavor-tabs", TabbedContent)
+                tabs.active = f"tab-{flavor}"
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Server-side resume (records "last active"), then pull messages.
+        try:
+            await self.client.resume_session(action.session_id)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Resume failed: {exc}", severity="warning")
+            return
+
+        try:
+            rows = await self.client.get_session_messages(action.session_id, flavor=flavor)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Could not load history: {exc}", severity="warning")
+            return
+
+        pane = self._panes.get(flavor)
+        if pane is None:
+            self.notify(f"No pane for flavor {flavor!r}", severity="warning")
+            return
+
+        # Wipe local state + UI, then replay row-by-row.
+        self._states[flavor] = FlavorState(name=flavor)
+        pane.conversation.reset_for_replay()
+        self._active_session_id[flavor] = action.session_id
+        self._replay_messages(flavor, rows)
+        self.notify(f"Resumed {action.session_id[:8]} — {len(rows)} msgs")
+
+    def _replay_messages(self, flavor: str, rows: list[dict]) -> None:
+        """Render historical DB rows as if they had just streamed live.
+
+        Row shape (per podo/nx01#94): {role, content, tool_name, tool_calls,
+        tool_call_id, reasoning, reasoning_content, timestamp, ...}.
+
+        - reasoning text → ThinkingBlock, immediately finalised (collapsed)
+        - role=user      → UserMessage
+        - role=assistant → AssistantMessage; if tool_calls present, also
+                            mount one ToolCallBlock per call (marked DONE)
+        - role=tool      → tool output appended into the matching ToolCallBlock
+        """
+        from .state import ToolStatus
+
+        conv = self._panes[flavor].conversation
+        for row in rows:
+            role = row.get("role", "")
+            reasoning = row.get("reasoning") or row.get("reasoning_content") or ""
+            if reasoning:
+                t = conv.start_thinking()
+                t.append_chunk(reasoning)
+                conv.end_thinking()
+
+            if role == "user":
+                content = row.get("content") or ""
+                if content:
+                    conv.add_user_message(str(content))
+            elif role == "assistant":
+                content = row.get("content") or ""
+                if content:
+                    conv.start_assistant(str(content))
+                    conv.end_assistant()
+                for tc in row.get("tool_calls") or []:
+                    name = tc.get("name") or tc.get("function", {}).get("name", "tool")
+                    args = tc.get("arguments") or tc.get("function", {}).get("arguments", "")
+                    call_id = tc.get("id", "")
+                    block = conv.start_tool(tool=str(name), args=str(args), call_id=call_id)
+                    block.set_status(ToolStatus.DONE)
+            elif role == "tool":
+                call_id = row.get("tool_call_id", "")
+                tool_name = row.get("tool_name") or "tool"
+                output = row.get("content") or ""
+                block = conv.get_tool(call_id) if call_id else None
+                if block is None:
+                    block = conv.start_tool(tool=str(tool_name), args="", call_id=call_id)
+                if output:
+                    block.append_output(str(output))
+                block.set_status(ToolStatus.DONE)
 
     def action_open_memory(self) -> None:
         self.run_worker(self._open_memory(), exclusive=False)
