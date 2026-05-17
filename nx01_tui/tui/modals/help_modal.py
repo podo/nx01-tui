@@ -27,8 +27,8 @@ _KEYBINDINGS: list[tuple[str, str, str]] = [
     ("Global", "ESC", "Pop modal / dismiss"),
     ("Conversation", "↑ ↓ PgUp PgDn", "Scroll"),
     ("Conversation", "x / space", "Toggle expand"),
-    ("Conversation", "y", "Yank focused block"),
-    ("Conversation", "Y", "Yank last code block"),
+    ("Conversation", "ctrl+y", "Yank focused block"),
+    ("Conversation", "ctrl+shift+y", "Yank last code block"),
     ("Conversation", "click header", "Toggle expand (mouse)"),
     ("Search", "Enter", "Next match"),
     ("Search", "Shift+Enter", "Prev match"),
@@ -39,7 +39,7 @@ _KEYBINDINGS: list[tuple[str, str, str]] = [
     ("Input", "/", "Slash command"),
     ("Input", "↑↓ in dropdown", "Navigate completions"),
     ("Sessions", "Enter", "Resume + load history"),
-    ("Sessions", "f / e / d", "Fork / Edit / Delete"),
+    ("Sessions", "f / d", "Fork / Delete"),
     ("Permission", "y / n / a", "Allow / Deny / Always"),
 ]
 

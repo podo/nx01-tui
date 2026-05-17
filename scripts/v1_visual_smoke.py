@@ -106,10 +106,10 @@ async def _settle(app, pilot, secs: float = 1.5) -> None:
 def _screenshot(app, n: int, slug: str) -> str:
     path = ARTIFACTS / f"s{n:02d}_{slug}.svg"
     app.save_screenshot(str(path))
-    # Decode `&#x27;` → `'` artefacts from textual's SVG export (#29 item 31).
+    # Decode both `&#x27;` and `&apos;` → literal `'` (QA-tightened #31).
     try:
         raw = path.read_text(encoding="utf-8")
-        cleaned = raw.replace("&#x27;", "&apos;")
+        cleaned = raw.replace("&#x27;", "'").replace("&apos;", "'")
         if cleaned != raw:
             path.write_text(cleaned, encoding="utf-8")
     except OSError:

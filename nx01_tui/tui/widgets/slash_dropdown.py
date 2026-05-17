@@ -155,9 +155,10 @@ class SlashDropdown(OptionList):
             cat_label = self._CATEGORY_LABEL.get(category, category)
             cat_color = self._CATEGORY_COLOR.get(category, "$accent")
             padded = insertion.ljust(max_w)
+            # Rich literal brackets need `\[` / `\]` escapes (#29 QA item 12).
             label = (
                 f"[bold]{padded}[/]  [dim]{desc}[/]  "
-                f"[{cat_color}][[/][{cat_color}] {cat_label:<5}[/][{cat_color}]][/]"
+                rf"[{cat_color}]\[ {cat_label:<5}\][/]"
             )
             self.add_option(Option(label, id=insertion))
 

@@ -70,7 +70,7 @@ class PermissionModal(BaseModal):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
-            yield Static("[bold red]⚠ Tool Permission Required[/]", classes="dialog-title")
+            yield Static("[bold red]Tool Permission Required[/]", classes="dialog-title")
             yield Static(f"[dim]Tool:[/]  [bold]{self.tool}[/]")
             yield Static(f"[dim]Args:[/]  {self.args[:200]}")
             yield Static(f"[bold]Risk:[/] {self.risk}", id="risk")

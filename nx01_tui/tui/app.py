@@ -89,21 +89,25 @@ class Nx01App(App):
     CSS_PATH = "app.tcss"
 
     BINDINGS = [
-        Binding("ctrl+p", "command_palette", "Commands", show=True),
-        Binding("ctrl+s", "open_sessions", "Sessions", show=True),
-        Binding("ctrl+m", "open_memory", "Memory", show=True),
-        Binding("ctrl+k", "open_skills", "Skills", show=False),
-        Binding("ctrl+t", "open_tools", "Tools", show=False),
-        Binding("ctrl+n", "new_session", "New", show=False),
-        Binding("ctrl+b", "toggle_sidebar", "Sidebar", show=True),
-        Binding("ctrl+f", "search", "Search", show=True),
-        Binding("ctrl+c", "stop_generation", "Stop", show=True),
+        # All app-level shortcuts use priority=True so TextArea/Input defaults
+        # in the focused ChatInput don't swallow them (#29 QA N1 / N2).
+        Binding("ctrl+p", "command_palette", "Commands", show=True, priority=True),
+        Binding("ctrl+s", "open_sessions", "Sessions", show=True, priority=True),
+        Binding("ctrl+m", "open_memory", "Memory", show=True, priority=True),
+        Binding("ctrl+k", "open_skills", "Skills", show=False, priority=True),
+        Binding("ctrl+t", "open_tools", "Tools", show=False, priority=True),
+        Binding("ctrl+n", "new_session", "New", show=False, priority=True),
+        Binding("ctrl+b", "toggle_sidebar", "Sidebar", show=True, priority=True),
+        Binding("ctrl+f", "search", "Search", show=True, priority=True),
+        Binding("ctrl+c", "stop_generation", "Stop", show=True, priority=True),
         Binding("question_mark", "help", "Help", show=True),
-        Binding("ctrl+q", "request_quit", "Quit", show=True),
+        Binding("ctrl+q", "request_quit", "Quit", show=True, priority=True),
         Binding("d", "toggle_dark", "Theme", show=False),
-        Binding("ctrl+shift+d", "open_debug", "Debug", show=False),
-        Binding("y", "yank_focused", "Copy", show=False),
-        Binding("Y", "yank_last_code", "Copy last", show=False),
+        Binding("ctrl+shift+d", "open_debug", "Debug", show=False, priority=True),
+        # Yank moved to ctrl+y / ctrl+shift+y (priority) so TextArea doesn't
+        # treat plain y/Y as typed characters (QA N2). Plain y/Y dropped.
+        Binding("ctrl+y", "yank_focused", "Copy", show=False, priority=True),
+        Binding("ctrl+shift+y", "yank_last_code", "Copy last", show=False, priority=True),
         # Flavor switching — priority so TextArea's Tab handling doesn't
         # swallow it when ChatInput is focused. (W3 of #26)
         Binding("tab", "switch_flavor", "Next flavor", show=True, priority=True),

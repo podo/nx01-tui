@@ -12,9 +12,10 @@ class BaseModal(ModalScreen):
     DEFAULT_CSS = """
     BaseModal {
         align: center middle;
-        /* Backdrop dim so stacked modals (e.g. Confirm over Sessions)
-           still hint at the layer beneath (#29 item 10). */
-        background: $background 70%;
+        /* Backdrop dim — 40% so stacked modals (e.g. Confirm over Sessions)
+           still hint at the layer beneath. QA pass lowered from 70% which
+           hid the previous modal entirely (#29 item 10). */
+        background: $background 40%;
     }
     BaseModal .dialog {
         background: $surface;

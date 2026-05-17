@@ -70,7 +70,7 @@ def default_commands() -> list[CommandEntry]:
             "ctrl+shift+d",
             "System",
         ),
-        CommandEntry("quit", "Quit", "Exit the application", "q", "System"),
+        CommandEntry("quit", "Quit", "Exit the application", "ctrl+q", "System"),
         # V2 (disabled)
         CommandEntry("v2_cron", "Cron Jobs", "Scheduled tasks (v2)", "/cron", "V2", enabled=False),
         CommandEntry("v2_kanban", "Kanban", "Board view (v2)", "/kanban", "V2", enabled=False),

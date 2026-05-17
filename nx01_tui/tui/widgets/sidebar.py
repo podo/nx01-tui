@@ -299,8 +299,7 @@ class MonitorSidebar(Vertical):
         background: $surface;
         padding: 0 0 0 0;
     }
-    MonitorSidebar.hidden     { display: none; }
-    MonitorSidebar.icon-strip { width: 3; }
+    MonitorSidebar.hidden { display: none; }
     """
 
     def __init__(self, flavor: str, **kwargs: object) -> None:
@@ -352,7 +351,7 @@ class MonitorSidebar(Vertical):
     MAX_WIDTH = 50
 
     def apply_terminal_width(self, width: int) -> None:
-        self.remove_class("hidden", "icon-strip")
+        self.remove_class("hidden")
         # Hide entirely below 130 cols (#29 item 3). The previous icon-strip
         # mode rendered an empty 3-col sliver because no per-section icons
         # exist; the StatusBar surfaces a `ctrl+b` hint instead.
