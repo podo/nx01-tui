@@ -51,6 +51,12 @@ async def app_with_pilot():
     async with app.run_test(size=(180, 50)) as pilot:
         # Long enough for bootstrap worker to finish on slow Linux CI.
         await pilot.pause(1.5)
+        # Cancel SSE / bootstrap workers — they would otherwise post
+        # `ConnectionStatusMessage("disconnected", ...)` mid-test, and
+        # the handler does `query_one(AppHeader)`, which races teardown.
+        for w in list(app.workers):
+            w.cancel()
+        await pilot.pause(0.2)
         yield app, pilot
 
 
