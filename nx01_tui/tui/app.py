@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from urllib.parse import urlparse
 
 import httpx
@@ -41,6 +42,7 @@ from .modals import (
     ConfigModal,
     ConfirmModal,
     CostModal,
+    DebugModal,
     HelpModal,
     MemoryModal,
     ModelPickerModal,
@@ -56,6 +58,7 @@ from .state import AgentState, FlavorState, route_event
 from .widgets import (
     AppHeader,
     ChatInput,
+    FilePickerDropdown,
     FlavorPane,
     SearchBar,
     SlashDropdown,
@@ -98,6 +101,7 @@ class Nx01App(App):
         Binding("question_mark", "help", "Help", show=True),
         Binding("q", "request_quit", "Quit", show=True),
         Binding("d", "toggle_dark", "Theme", show=False),
+        Binding("ctrl+shift+d", "open_debug", "Debug", show=False),
         Binding("y", "yank_focused", "Copy", show=False),
         Binding("Y", "yank_last_code", "Copy last", show=False),
     ]
@@ -120,6 +124,9 @@ class Nx01App(App):
         self._connected = False
         self._current_correlation_id: str | None = None
         self._always_allow_tools: set[str] = set()
+        # Rolling SSE event log — fed to DebugModal on demand.
+        self._debug_buffer: deque[SseEvent] = deque(maxlen=500)
+        self._debug_modal: DebugModal | None = None
 
     # ── Composition ──────────────────────────────────────────────────
 
@@ -191,6 +198,9 @@ class Nx01App(App):
     # ── Message dispatch ─────────────────────────────────────────────
 
     def on_sse_message(self, message: SseMessage) -> None:
+        self._debug_buffer.append(message.event)
+        if self._debug_modal is not None:
+            self._debug_modal.push(message.event)
         self._dispatch_event(message.event)
 
     def on_connection_status_message(self, message: ConnectionStatusMessage) -> None:
@@ -319,8 +329,11 @@ class Nx01App(App):
         if not flavor:
             return
         try:
-            dropdown = self.query_one(f"#slash-{flavor}", SlashDropdown)
-            dropdown.update_for_text(event.text)
+            self.query_one(f"#slash-{flavor}", SlashDropdown).update_for_text(event.text)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.query_one(f"#files-{flavor}", FilePickerDropdown).update_for_text(event.text)
         except Exception:  # noqa: BLE001
             pass
 
@@ -332,6 +345,21 @@ class Nx01App(App):
             inp = self.query_one(f"#input-{flavor}", ChatInput)
             # Replace whatever the user typed with the completed command + trailing space
             inp.text = event.command + " "
+            inp.focus()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_file_picker_dropdown_completed(self, event: FilePickerDropdown.Completed) -> None:
+        flavor = self._active_flavor()
+        if not flavor:
+            return
+        try:
+            inp = self.query_one(f"#input-{flavor}", ChatInput)
+            # Replace the trailing @token with @path
+            text = inp.text
+            at = text.rfind("@")
+            new_text = (text[:at] if at >= 0 else text) + f"@{event.path} "
+            inp.text = new_text
             inp.focus()
         except Exception:  # noqa: BLE001
             pass
@@ -372,6 +400,7 @@ class Nx01App(App):
             "toggle_theme": "toggle_dark",
             "search": "search",
             "help": "help",
+            "open_debug": "open_debug",
             "quit": "request_quit",
         }
         method = mapping.get(action)
@@ -513,6 +542,13 @@ class Nx01App(App):
 
     def action_help(self) -> None:
         self.push_screen(HelpModal())
+
+    def action_open_debug(self) -> None:
+        def on_dismissed(_result: object) -> None:
+            self._debug_modal = None
+
+        self._debug_modal = DebugModal(list(self._debug_buffer))
+        self.push_screen(self._debug_modal, on_dismissed)
 
     def action_request_quit(self) -> None:
         self.exit()

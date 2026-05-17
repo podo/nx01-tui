@@ -11,14 +11,19 @@ Provides a small API the App layer uses without poking at internals:
 
 from __future__ import annotations
 
+import re
+
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
+from .code_block import CodeBlock
 from .messages import AssistantMessage, UserMessage
 from .search_bar import SearchBar
 from .skill_block import SkillBlock
 from .thinking_block import ThinkingBlock
 from .tool_call_block import ToolCallBlock
+
+_FENCE_RE = re.compile(r"```(\w+)?\n(.*?)\n```", re.DOTALL)
 
 _EMPTY_HINT = (
     "[bold]Welcome to nx01-tui[/]\n\n"
@@ -126,9 +131,20 @@ class ConversationView(VerticalScroll):
         self.scroll_end(animate=False)
 
     def end_assistant(self) -> None:
-        if self._active_assistant is not None:
-            self._active_assistant.finalise()
-            self._active_assistant = None
+        if self._active_assistant is None:
+            return
+        msg = self._active_assistant
+        msg.finalise()
+        self._active_assistant = None
+        # Split fenced code blocks out into clickable CodeBlocks at end-of-turn.
+        # The assistant message still renders prose; for each fenced block we
+        # also mount a CodeBlock right after for click-to-copy.
+        text = getattr(msg, "_buffer", "")
+        for match in _FENCE_RE.finditer(text):
+            lang, code = match.group(1) or "text", match.group(2).strip()
+            if code:
+                self.mount(CodeBlock(code=code, language=lang))
+        self.scroll_end(animate=False)
 
     # ── Search bar control ───────────────────────────────────────────
 

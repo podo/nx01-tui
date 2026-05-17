@@ -11,6 +11,7 @@ from textual.containers import Horizontal, Vertical
 from ..state import AgentState, FlavorState
 from .chat_input import ChatInput
 from .conversation import ConversationView
+from .file_picker import FilePickerDropdown
 from .search_bar import SearchBar
 from .sidebar import MonitorSidebar
 from .slash_dropdown import SlashDropdown
@@ -41,6 +42,7 @@ class FlavorPane(Horizontal):
             yield SearchBar(id=f"search-{self.flavor}")
             yield ConversationView(id=f"conv-{self.flavor}")
             yield SlashDropdown(id=f"slash-{self.flavor}")
+            yield FilePickerDropdown(id=f"files-{self.flavor}")
             yield ChatInput(id=f"input-{self.flavor}")
         yield MonitorSidebar(flavor=self.flavor, id=f"sidebar-{self.flavor}")
 

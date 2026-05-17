@@ -171,6 +171,47 @@ class SkillsSection(_Section):
             container.mount(Static(f"[$accent]⚡[/] [bold]{skill['name']}[/]{size_str}"))
 
 
+# ── MCP server status (V2 — populated from /mcp/servers endpoint) ────
+
+
+class McpSection(_Section):
+    DEFAULT_CSS = """
+    McpSection .mcp-row { color: $text-muted; height: 1; }
+    """
+
+    def __init__(self) -> None:
+        super().__init__(title="MCP")
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield Vertical(id="mcp-list")
+
+    def update_servers(self, servers: list[dict]) -> None:
+        try:
+            container = self.query_one("#mcp-list", Vertical)
+        except Exception:  # noqa: BLE001
+            return
+        container.remove_children()
+        if not servers:
+            container.mount(Static("[dim]none[/]", classes="mcp-row"))
+            return
+        for srv in servers[-6:]:
+            status = (srv.get("status") or "unknown").lower()
+            color = {
+                "connected": "$success",
+                "running": "$success",
+                "needs_auth": "$warning",
+                "error": "$error",
+                "failed": "$error",
+            }.get(status, "$text-muted")
+            container.mount(
+                Static(
+                    f"[{color}]⬤[/] [bold]{srv.get('name', '?')}[/]  [dim]{status}[/]",
+                    classes="mcp-row",
+                )
+            )
+
+
 # ── Context ────────────────────────────────────────────────────────────
 
 
@@ -264,6 +305,7 @@ class MonitorSidebar(Vertical):
         yield ActivitySection()
         yield MemorySection()
         yield SkillsSection()
+        yield McpSection()
         yield ContextSection()
         yield SessionSection()
 
