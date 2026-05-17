@@ -36,16 +36,21 @@ class SessionsModal(BaseModal):
 
     DEFAULT_CSS = """
     SessionsModal .dialog { width: 80; height: 90%; }
-    SessionsModal Input { margin-bottom: 1; }
+    SessionsModal Input { margin-bottom: 1; display: none; }
+    SessionsModal Input.visible { display: block; }
     SessionsModal OptionList { height: 1fr; }
     """
 
     BINDINGS = [
-        Binding("r", "resume", "Resume", show=True),
+        # Enter resumes the highlighted session (D7 in #26).
+        Binding("enter", "resume", "Resume", show=True),
+        Binding("r", "resume", "Resume", show=False),
         Binding("f", "fork", "Fork", show=True),
         Binding("e", "rename", "Rename", show=True),
         Binding("d", "delete", "Delete", show=True),
         Binding("n", "new_session", "New", show=True),
+        # `/` reveals the (hidden) filter input.
+        Binding("slash", "reveal_filter", show=False),
     ]
 
     def __init__(self, sessions: list[SessionEntry], **kwargs: object) -> None:
@@ -59,9 +64,17 @@ class SessionsModal(BaseModal):
             yield Input(placeholder="Filter sessions…", id="filter")
             yield OptionList(*self._render_options(""), id="session-list")
             yield Static(
-                "[dim]r resume · f fork · e rename · d delete · n new · ESC close[/]",
+                "[dim]↑↓ navigate · Enter resume · f fork · e rename · d delete · n new · "
+                "/ filter · ESC close[/]",
                 classes="dialog-hint",
             )
+
+    def on_mount(self) -> None:
+        # List grabs focus immediately — no auto-typing into a filter.
+        try:
+            self.query_one("#session-list", OptionList).focus()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _render_options(self, query: str) -> list[Option]:
         q = query.lower().strip()
@@ -131,3 +144,19 @@ class SessionsModal(BaseModal):
 
     def action_new_session(self) -> None:
         self.dismiss(SessionAction("new"))
+
+    def action_reveal_filter(self) -> None:
+        try:
+            inp = self.query_one("#filter", Input)
+            inp.add_class("visible")
+            inp.focus()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_input_blurred(self, _event: Input.Blurred) -> None:
+        try:
+            inp = self.query_one("#filter", Input)
+            if not inp.value:
+                inp.remove_class("visible")
+        except Exception:  # noqa: BLE001
+            pass

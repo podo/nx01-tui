@@ -54,3 +54,38 @@ async def test_toggle_collapsed_swaps_class():
         assert not block.has_class("collapsed")
         block.toggle_collapsed()
         assert block.has_class("collapsed")
+
+
+@pytest.mark.asyncio
+async def test_click_on_header_toggles():
+    """Clicking the header row toggles collapse state."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        block.done()
+        await pilot.pause(0.05)
+        # Collapsed after done()
+        assert block.has_class("collapsed")
+        # Click on the header — toggles to expanded
+        await pilot.click("ThinkingBlock #header")
+        await pilot.pause(0.05)
+        assert not block.has_class("collapsed")
+
+
+@pytest.mark.asyncio
+async def test_click_on_body_does_not_toggle():
+    """Clicking inside the RichLog body must NOT toggle collapse."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        block.append_chunk("some streamed thought")
+        await pilot.pause(0.05)
+        # Currently expanded (thinking is True)
+        assert not block.has_class("collapsed")
+        # Click on the RichLog body
+        await pilot.click("ThinkingBlock RichLog")
+        await pilot.pause(0.05)
+        # Still expanded — body click is inert
+        assert not block.has_class("collapsed")

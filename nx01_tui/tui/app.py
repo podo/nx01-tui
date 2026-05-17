@@ -104,6 +104,18 @@ class Nx01App(App):
         Binding("ctrl+shift+d", "open_debug", "Debug", show=False),
         Binding("y", "yank_focused", "Copy", show=False),
         Binding("Y", "yank_last_code", "Copy last", show=False),
+        # Flavor switching — priority so TextArea's Tab handling doesn't
+        # swallow it when ChatInput is focused. (W3 of #26)
+        Binding("tab", "switch_flavor", "Next flavor", show=True, priority=True),
+        Binding("ctrl+1", "select_flavor(0)", show=False, priority=True),
+        Binding("ctrl+2", "select_flavor(1)", show=False, priority=True),
+        Binding("ctrl+3", "select_flavor(2)", show=False, priority=True),
+        Binding("ctrl+4", "select_flavor(3)", show=False, priority=True),
+        Binding("ctrl+5", "select_flavor(4)", show=False, priority=True),
+        Binding("ctrl+6", "select_flavor(5)", show=False, priority=True),
+        Binding("ctrl+7", "select_flavor(6)", show=False, priority=True),
+        Binding("ctrl+8", "select_flavor(7)", show=False, priority=True),
+        Binding("ctrl+9", "select_flavor(8)", show=False, priority=True),
     ]
 
     def __init__(
@@ -122,6 +134,9 @@ class Nx01App(App):
         self._panes: dict[str, FlavorPane] = {}
         self._initial_flavors = flavors or []
         self._connected = False
+        # Per-flavor active session — set after resume so the next /message
+        # post appends to that session instead of starting a new one (W7).
+        self._active_session_id: dict[str, str] = {}
         self._current_correlation_id: str | None = None
         self._always_allow_tools: set[str] = set()
         # Rolling SSE event log — fed to DebugModal on demand.
@@ -185,7 +200,41 @@ class Nx01App(App):
         # Auto-focus the active flavor's input so the user can type immediately.
         self._focus_active_input()
 
+        # Bootstrap each flavor's SlashDropdown with live commands + skills +
+        # tools so `/` autocomplete surfaces everything the backend knows.
+        await self._bootstrap_slash_dropdowns(flavors)
+
         self.run_worker(self._sse_loop(), exclusive=True, name="sse", group="net")
+
+    async def _bootstrap_slash_dropdowns(self, flavors: list[str]) -> None:
+        """Fetch commands once + per-flavor skills/tools; feed each dropdown."""
+        try:
+            commands = await self.client.list_commands()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("slash dropdown: list_commands failed: %s", exc)
+            commands = []
+        for fl in flavors:
+            try:
+                skills = await self.client.list_skills(fl)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("slash dropdown: list_skills(%s) failed: %s", fl, exc)
+                skills = []
+            try:
+                tools_resp = await self.client.get_tools(fl)
+                tools = (
+                    tools_resp.get("tools", [])
+                    if isinstance(tools_resp, dict)
+                    else (tools_resp or [])
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("slash dropdown: get_tools(%s) failed: %s", fl, exc)
+                tools = []
+            try:
+                self.query_one(f"#slash-{fl}", SlashDropdown).set_sources(
+                    commands=commands, skills=skills, tools=tools
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("slash dropdown: set_sources(%s) failed: %s", fl, exc)
 
     def _focus_active_input(self) -> None:
         flavor = self._active_flavor()
@@ -345,8 +394,14 @@ class Nx01App(App):
 
     async def _send_message(self, flavor: str, text: str) -> None:
         try:
-            response = await self.client.send_message(flavor, text)
+            session_id = self._active_session_id.get(flavor)
+            response = await self.client.send_message(flavor, text, session_id=session_id)
             self._current_correlation_id = response.get("correlation_id")
+            # Remember the session id the server allocated so the next turn
+            # continues to append to the same session (W7).
+            new_sid = response.get("session_id")
+            if new_sid:
+                self._active_session_id[flavor] = new_sid
         except httpx.HTTPError as exc:
             self._states[flavor].set_error(str(exc))
             self._panes[flavor].set_state(AgentState.ERROR)
@@ -470,8 +525,7 @@ class Nx01App(App):
     async def _handle_session_action(self, action: SessionAction) -> None:
         try:
             if action.action == "resume":
-                await self.client.resume_session(action.session_id)
-                self.notify(f"Resumed {action.session_id[:8]}")
+                await self._resume_session(action)
             elif action.action == "fork":
                 await self.client.fork_session(action.session_id)
                 self.notify(f"Forked {action.session_id[:8]}")
@@ -486,6 +540,99 @@ class Nx01App(App):
                 self.notify("New session started")
         except Exception as exc:  # noqa: BLE001
             self.notify(f"Session action failed: {exc}", severity="error")
+
+    async def _resume_session(self, action: SessionAction) -> None:
+        """Server-side resume + replay history into ConversationView (W7).
+
+        Cross-flavor: if the session lives in a different flavor than the
+        active tab, switch tabs first (D7).
+        """
+        flavor = action.flavor or self._active_flavor()
+        if not flavor:
+            self.notify("No active flavor; can't resume", severity="warning")
+            return
+
+        # Switch tab if needed before we touch any of the flavor's UI.
+        if self._active_flavor() != flavor:
+            try:
+                tabs = self.query_one("#flavor-tabs", TabbedContent)
+                tabs.active = f"tab-{flavor}"
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Server-side resume (records "last active"), then pull messages.
+        try:
+            await self.client.resume_session(action.session_id)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Resume failed: {exc}", severity="warning")
+            return
+
+        try:
+            rows = await self.client.get_session_messages(action.session_id, flavor=flavor)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"Could not load history: {exc}", severity="warning")
+            return
+
+        pane = self._panes.get(flavor)
+        if pane is None:
+            self.notify(f"No pane for flavor {flavor!r}", severity="warning")
+            return
+
+        # Wipe local state + UI, then replay row-by-row.
+        self._states[flavor] = FlavorState(name=flavor)
+        pane.conversation.reset_for_replay()
+        self._active_session_id[flavor] = action.session_id
+        self._replay_messages(flavor, rows)
+        self.notify(f"Resumed {action.session_id[:8]} — {len(rows)} msgs")
+
+    def _replay_messages(self, flavor: str, rows: list[dict]) -> None:
+        """Render historical DB rows as if they had just streamed live.
+
+        Row shape (per podo/nx01#94): {role, content, tool_name, tool_calls,
+        tool_call_id, reasoning, reasoning_content, timestamp, ...}.
+
+        - reasoning text → ThinkingBlock, immediately finalised (collapsed)
+        - role=user      → UserMessage
+        - role=assistant → AssistantMessage; if tool_calls present, also
+                            mount one ToolCallBlock per call (marked DONE)
+        - role=tool      → tool output appended into the matching ToolCallBlock
+        """
+        from .state import ToolStatus
+
+        conv = self._panes[flavor].conversation
+        for row in rows:
+            role = row.get("role", "")
+            reasoning = row.get("reasoning") or row.get("reasoning_content") or ""
+            if reasoning:
+                t = conv.start_thinking()
+                t.append_chunk(reasoning)
+                conv.end_thinking()
+
+            if role == "user":
+                content = row.get("content") or ""
+                if content:
+                    conv.add_user_message(str(content))
+            elif role == "assistant":
+                content = row.get("content") or ""
+                if content:
+                    conv.start_assistant(str(content))
+                    conv.end_assistant()
+                for tc in row.get("tool_calls") or []:
+                    name = tc.get("name") or tc.get("function", {}).get("name", "tool")
+                    args = tc.get("arguments") or tc.get("function", {}).get("arguments", "")
+                    call_id = tc.get("id", "")
+                    block = conv.start_tool(tool=str(name), args=str(args), call_id=call_id)
+                    block.set_status(ToolStatus.DONE)
+            elif role == "tool":
+                call_id = row.get("tool_call_id", "")
+                tool_name = row.get("tool_name") or "tool"
+                output = row.get("content") or ""
+                block = conv.get_tool(call_id) if call_id else None
+                if block is None:
+                    block = conv.start_tool(tool=str(tool_name), args="", call_id=call_id)
+                if output:
+                    block.append_output(str(output))
+                block.set_status(ToolStatus.DONE)
 
     def action_open_memory(self) -> None:
         self.run_worker(self._open_memory(), exclusive=False)
@@ -597,6 +744,14 @@ class Nx01App(App):
         current = self._active_flavor()
         idx = (names.index(current) + 1) % len(names) if current in names else 0
         tabs.active = f"tab-{names[idx]}"
+
+    def action_select_flavor(self, index: int) -> None:
+        """Jump directly to flavor[index]; no-op past the end (D9, #26)."""
+        names = list(self._states)
+        if not names or index < 0 or index >= len(names):
+            return
+        tabs = self.query_one("#flavor-tabs", TabbedContent)
+        tabs.active = f"tab-{names[index]}"
 
     def action_yank_focused(self) -> None:
         flavor = self._active_flavor()

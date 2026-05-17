@@ -69,6 +69,17 @@ class ConversationView(VerticalScroll):
             self._empty_state.remove()
             self._empty_state = None
 
+    def reset_for_replay(self) -> None:
+        """Wipe all rendered children + per-turn state. Used before a
+        session-history replay (W7 in podo/nx01-tui#26) so we start from
+        an empty conversation column.
+        """
+        self.remove_children()
+        self._empty_state = None
+        self._active_thinking = None
+        self._active_assistant = None
+        self._active_tools = {}
+
     # ── Public API ───────────────────────────────────────────────────
 
     def add_user_message(self, text: str) -> UserMessage:

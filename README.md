@@ -1,6 +1,8 @@
-# nx01-tui
+# nx01-tui · v1.0
 
 Operator cockpit for the [NX01](https://github.com/podo/nx01) fleet — a full-screen Textual TUI plus chat / watch / doctor / install / update CLIs.
+
+**v1.0** ships the full UX pass tracked in [#26](https://github.com/podo/nx01-tui/issues/26): merged slash dropdown (commands + skills + tools), session resume that replays full chat history, responsive sidebar, mouse + keyboard parity on collapsable blocks, list-focused modals with hidden filters, Tab + Ctrl+1..9 flavor jumps.
 
 ## Quick start
 
@@ -56,7 +58,7 @@ NX01 doctor — https://77.42.71.240.nip.io
 ✗ 2 failed
 ```
 
-`401` means your `NX01_API_KEY` doesn't match the server's. `unreachable` means DNS / TLS / Caddy issue. The header in the TUI also shows the cause: green dot = OK, red dot + `(auth failed)` = 401, red dot + `(offline)` = network.
+`401` means your `NX01_API_KEY` doesn't match the server's. `unreachable` means DNS / TLS / Caddy issue. The TUI header conveys state by text color + parenthetical suffix — cyan domain = connected, yellow `(reconnecting)`, red `(auth failed — check API key)`, red `(offline)`. No status dot in 1.0; the colored label carries the signal.
 
 ## Environment variables
 
@@ -71,8 +73,8 @@ NX01 doctor — https://77.42.71.240.nip.io
 
 | Key | Action |
 |-----|--------|
-| `ctrl+p` | Command palette (every action, fuzzy-filtered) |
-| `ctrl+s` | Sessions modal — resume / fork / rename / delete |
+| `ctrl+p` | Command palette (list-focused; press `/` inside to reveal filter) |
+| `ctrl+s` | Sessions modal — Enter resumes (replays full history) / `f` fork / `e` rename / `d` delete |
 | `ctrl+m` | Memory modal — agent + user stores |
 | `ctrl+k` | Skills modal |
 | `ctrl+t` | Tools modal |
@@ -81,17 +83,23 @@ NX01 doctor — https://77.42.71.240.nip.io
 | `ctrl+f` | Search in conversation |
 | `ctrl+shift+d` | Debug modal — raw SSE event log |
 | `ctrl+c` | Stop generation |
-| `Enter` | Send message |
+| `Enter` | Send message (or complete the visible slash / file dropdown) |
 | `Shift+Enter` | Newline (modern terminals — Kitty / WezTerm / Ghostty / iTerm2) |
 | `Alt+Enter` | Newline (Terminal.app fallback) |
 | `ctrl+j` | Send message (universal fallback) |
-| `Tab` / `Shift+Tab` | Cycle flavor tabs |
+| `Tab` | Cycle to next flavor (priority — works even with input focused) |
+| `Ctrl+1..9` | Jump directly to flavor[N-1]; past-end = no-op |
+| `↑ / ↓` | Navigate the visible slash / file dropdown (else move cursor) |
+| `Escape` | Dismiss visible dropdown |
 | `?` | Help overlay (auto-generated keybinding table) |
 | `q` | Quit |
 | `y` / `Y` | Yank focused / last code block |
-| `x` or `space` | Expand / collapse focused block |
+| `x` or `space` | Expand / collapse focused block (keyboard) |
+| Mouse click on header row | Expand / collapse Thinking / Tool / Skill block |
 | `@filename` (in input) | File picker dropdown |
-| `/command` (in input) | Slash command autocomplete |
+| `/command` (in input) | Slash dropdown — commands + skills + tools |
+
+> **Note:** `Ctrl+2`, `Ctrl+3`, … require a terminal with modifier reporting (Kitty / WezTerm / Ghostty / iTerm2 with CSI-u). Tab is the universal fallback.
 
 ## Development
 

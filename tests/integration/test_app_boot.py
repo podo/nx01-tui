@@ -10,11 +10,19 @@ from nx01_tui.tui.widgets import AppHeader, FlavorPane
 from tests.fixtures.sample_events import chunk, thinking, tool_started, turn_done
 
 
+async def _settle(app, pilot, secs: float = 1.5) -> None:
+    """Pause for mount + cancel SSE/bootstrap workers so retries don't race."""
+    await pilot.pause(secs)
+    for w in list(app.workers):
+        w.cancel()
+    await pilot.pause(0.2)
+
+
 @pytest.mark.asyncio
 async def test_app_boots_with_initial_flavors():
     app = Nx01App("http://localhost:9999", api_key=None, flavors=["assistant", "operator"])
     async with app.run_test() as pilot:
-        await pilot.pause(0.3)
+        await _settle(app, pilot)
         assert set(app._states.keys()) == {"assistant", "operator"}
         # Both panes mounted
         assert len(app.query(FlavorPane)) == 2
@@ -24,7 +32,7 @@ async def test_app_boots_with_initial_flavors():
 async def test_header_shows_domain():
     app = Nx01App("http://nx01.example.com", api_key=None, flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(0.3)
+        await _settle(app, pilot)
         header = app.query_one(AppHeader)
         assert header.domain == "nx01.example.com"
 
@@ -33,7 +41,7 @@ async def test_header_shows_domain():
 async def test_event_dispatch_drives_pane_state():
     app = Nx01App("http://localhost:9999", api_key=None, flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(0.3)
+        await _settle(app, pilot)
         # Drive a full turn through the dispatcher.
         app._dispatch_event(parse_event(thinking()))
         await pilot.pause(0.1)
@@ -57,7 +65,7 @@ async def test_event_dispatch_drives_pane_state():
 async def test_help_modal_opens_and_closes():
     app = Nx01App("http://localhost:9999", api_key=None, flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(0.3)
+        await _settle(app, pilot)
         # ChatInput auto-focuses on boot; call the action directly to bypass
         # the focused-input swallowing the printable key.
         app.action_help()
@@ -72,7 +80,7 @@ async def test_help_modal_opens_and_closes():
 async def test_command_modal_opens():
     app = Nx01App("http://localhost:9999", api_key=None, flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(0.3)
+        await _settle(app, pilot)
         await pilot.press("ctrl+p")
         await pilot.pause(0.2)
         assert app.screen_stack[-1].__class__.__name__ == "CommandModal"
@@ -89,6 +97,6 @@ async def test_extract_last_code_block():
 async def test_yank_last_code_with_no_block_notifies():
     app = Nx01App("http://localhost:9999", api_key=None, flavors=["assistant"])
     async with app.run_test() as pilot:
-        await pilot.pause(0.3)
+        await _settle(app, pilot)
         app._states["assistant"].messages.append({"type": "chunk", "text": "plain text only"})
         app.action_yank_last_code()  # should not raise

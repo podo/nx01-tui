@@ -86,3 +86,36 @@ async def test_append_output_streams():
         block.append_output("stdout chunk 2\n")
         await pilot.pause(0.05)
         # No crash; output mounted in RichLog.
+
+
+@pytest.mark.asyncio
+async def test_click_on_header_toggles_collapse():
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ToolCallBlock)
+        block.set_status(ToolStatus.ACTIVE)
+        await pilot.pause(0.05)
+        assert not block.collapsed
+        await pilot.click("ToolCallBlock #header")
+        await pilot.pause(0.05)
+        assert block.collapsed is True
+        await pilot.click("ToolCallBlock #header")
+        await pilot.pause(0.05)
+        assert block.collapsed is False
+
+
+@pytest.mark.asyncio
+async def test_click_on_body_does_not_toggle():
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ToolCallBlock)
+        block.set_status(ToolStatus.ACTIVE)
+        block.append_output("hello\n")
+        await pilot.pause(0.05)
+        assert not block.collapsed
+        await pilot.click("ToolCallBlock RichLog")
+        await pilot.pause(0.05)
+        # Body click is inert — still expanded.
+        assert block.collapsed is False

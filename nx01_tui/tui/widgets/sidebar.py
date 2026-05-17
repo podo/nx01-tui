@@ -340,9 +340,21 @@ class MonitorSidebar(Vertical):
 
     # ── Responsive behaviour ─────────────────────────────────────────
 
+    # Hard limits for the responsive width (cells). Override per-instance if
+    # a different sidebar should bias narrower or wider.
+    MIN_WIDTH = 30
+    MAX_WIDTH = 50
+
     def apply_terminal_width(self, width: int) -> None:
         self.remove_class("hidden", "icon-strip")
         if width < 100:
             self.add_class("hidden")
-        elif width < 130:
+            return
+        if width < 130:
             self.add_class("icon-strip")
+            return
+        # Normal mode — scale linearly with terminal width, clamped to
+        # [MIN_WIDTH, MAX_WIDTH]. Wider terminal → more room for memory bars
+        # + activity rows without shrinking the conversation column.
+        target = max(self.MIN_WIDTH, min(self.MAX_WIDTH, width // 4))
+        self.styles.width = target
