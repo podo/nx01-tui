@@ -104,6 +104,18 @@ class Nx01App(App):
         Binding("ctrl+shift+d", "open_debug", "Debug", show=False),
         Binding("y", "yank_focused", "Copy", show=False),
         Binding("Y", "yank_last_code", "Copy last", show=False),
+        # Flavor switching — priority so TextArea's Tab handling doesn't
+        # swallow it when ChatInput is focused. (W3 of #26)
+        Binding("tab", "switch_flavor", "Next flavor", show=True, priority=True),
+        Binding("ctrl+1", "select_flavor(0)", show=False, priority=True),
+        Binding("ctrl+2", "select_flavor(1)", show=False, priority=True),
+        Binding("ctrl+3", "select_flavor(2)", show=False, priority=True),
+        Binding("ctrl+4", "select_flavor(3)", show=False, priority=True),
+        Binding("ctrl+5", "select_flavor(4)", show=False, priority=True),
+        Binding("ctrl+6", "select_flavor(5)", show=False, priority=True),
+        Binding("ctrl+7", "select_flavor(6)", show=False, priority=True),
+        Binding("ctrl+8", "select_flavor(7)", show=False, priority=True),
+        Binding("ctrl+9", "select_flavor(8)", show=False, priority=True),
     ]
 
     def __init__(
@@ -631,6 +643,14 @@ class Nx01App(App):
         current = self._active_flavor()
         idx = (names.index(current) + 1) % len(names) if current in names else 0
         tabs.active = f"tab-{names[idx]}"
+
+    def action_select_flavor(self, index: int) -> None:
+        """Jump directly to flavor[index]; no-op past the end (D9, #26)."""
+        names = list(self._states)
+        if not names or index < 0 or index >= len(names):
+            return
+        tabs = self.query_one("#flavor-tabs", TabbedContent)
+        tabs.active = f"tab-{names[index]}"
 
     def action_yank_focused(self) -> None:
         flavor = self._active_flavor()
