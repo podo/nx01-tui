@@ -91,11 +91,14 @@ class Nx01Client:
 
     # ── Sessions (depends on backend gap #16) ────────────────────────
 
-    async def list_sessions(self) -> list[dict[str, Any]]:
+    async def list_sessions(self, flavor: str | None = None) -> list[dict[str, Any]]:
         try:
-            r = await self._client.get("/sessions")
+            params = {"flavor": flavor} if flavor else None
+            r = await self._client.get("/sessions", params=params)
             r.raise_for_status()
-            return r.json()
+            data = r.json()
+            # Server returns { sessions: [...], next_cursor: ... }
+            return data.get("sessions", []) if isinstance(data, dict) else (data or [])
         except httpx.HTTPError:
             logger.warning("/sessions not yet exposed by backend")
             return []
