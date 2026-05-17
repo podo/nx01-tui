@@ -52,3 +52,28 @@ async def test_responsive_hides_below_100_cols():
         sb.apply_terminal_width(160)
         assert not sb.has_class("hidden")
         assert not sb.has_class("icon-strip")
+
+
+@pytest.mark.asyncio
+async def test_responsive_width_scales_with_terminal():
+    """In normal mode (width ≥ 130), sidebar width = clamp(30, term//4, 50)."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        sb = app.query_one(MonitorSidebar)
+
+        # 130 // 4 = 32, clamped to MIN_WIDTH=30 → 32
+        sb.apply_terminal_width(130)
+        assert int(sb.styles.width.value) == 32
+
+        # 160 // 4 = 40 → 40
+        sb.apply_terminal_width(160)
+        assert int(sb.styles.width.value) == 40
+
+        # 240 // 4 = 60 → clamped to MAX_WIDTH = 50
+        sb.apply_terminal_width(240)
+        assert int(sb.styles.width.value) == 50
+
+        # 110 // 4 = 27 — but we hit icon-strip mode before that, no width set.
+        sb.apply_terminal_width(110)
+        assert sb.has_class("icon-strip")
