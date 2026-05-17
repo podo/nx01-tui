@@ -26,6 +26,12 @@ async def test_connection_status_message_updates_header():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
         await pilot.pause(1.0)
+        # Cancel the SSE worker — it would otherwise race the test by
+        # posting its own 'disconnected' messages as backoff retries fail.
+        for w in list(app.workers):
+            w.cancel()
+        await pilot.pause(0.2)
+
         hdr = app.query_one(AppHeader)
 
         app.post_message(ConnectionStatusMessage("connected"))
