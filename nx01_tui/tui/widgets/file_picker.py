@@ -58,7 +58,14 @@ class FilePickerDropdown(OptionList):
     def __init__(self, root: Path | None = None, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._root = Path(root) if root else Path.cwd()
-        self._candidates: list[str] = self._scan()
+        # Lazy-scan on first `@` keystroke — keeps app boot cheap (matters on
+        # slow CI; os.walk on a large repo can add 100ms+).
+        self._candidates: list[str] | None = None
+
+    def _ensure_scanned(self) -> list[str]:
+        if self._candidates is None:
+            self._candidates = self._scan()
+        return self._candidates
 
     def _scan(self) -> list[str]:
         results: list[str] = []
@@ -95,7 +102,7 @@ class FilePickerDropdown(OptionList):
     def _populate(self, query: str) -> None:
         self.clear_options()
         q = query.lower()
-        for path in self._candidates:
+        for path in self._ensure_scanned():
             if q and q not in path.lower():
                 continue
             self.add_option(Option(f"📄  {path}", id=path))
