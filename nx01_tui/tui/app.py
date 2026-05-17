@@ -164,8 +164,7 @@ class Nx01App(App):
                 hdr.connected = False
                 hdr.auth_failed = True
                 self.notify(
-                    "Authentication failed (401). Check --api-key — it may be wrong "
-                    "or truncated.",
+                    "Authentication failed (401). Check --api-key — it may be wrong or truncated.",
                     severity="error",
                     timeout=8,
                 )
