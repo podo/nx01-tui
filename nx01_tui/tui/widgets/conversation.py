@@ -12,6 +12,7 @@ Provides a small API the App layer uses without poking at internals:
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 
 from textual.containers import VerticalScroll
 from textual.widgets import Static
@@ -72,6 +73,20 @@ class ConversationView(VerticalScroll):
         self._active_tools: dict[str, ToolCallBlock] = {}
         self._empty_state: _EmptyState | None = None
         self._unread_divider: UnreadDivider | None = None
+        self._scroll_suppressed: bool = False
+
+    @contextmanager
+    def suppress_scroll(self):
+        """Suppress scroll_end calls during batch operations."""
+        self._scroll_suppressed = True
+        try:
+            yield
+        finally:
+            self._scroll_suppressed = False
+
+    def _maybe_scroll(self) -> None:
+        if not self._scroll_suppressed:
+            self.scroll_end(animate=False)
 
     def on_mount(self) -> None:
         self._empty_state = _EmptyState(_EMPTY_HINT)
@@ -100,7 +115,7 @@ class ConversationView(VerticalScroll):
         self._clear_empty_state()
         widget = UserMessage(text)
         self.mount(widget)
-        self.scroll_end(animate=False)
+        self._maybe_scroll()
         # Reset per-turn references
         self._active_thinking = None
         self._active_assistant = None
@@ -117,7 +132,7 @@ class ConversationView(VerticalScroll):
     def append_thinking(self, text: str) -> None:
         block = self.start_thinking()
         block.append_chunk(text)
-        self.scroll_end(animate=False)
+        self._maybe_scroll()
 
     def end_thinking(self, auto_collapse: bool = True) -> None:
         if self._active_thinking is not None:
@@ -143,7 +158,7 @@ class ConversationView(VerticalScroll):
         if call_id:
             self._active_tools[call_id] = block
         self.mount(block)
-        self.scroll_end(animate=False)
+        self._maybe_scroll()
         return block
 
     def get_tool(self, call_id: str) -> ToolCallBlock | None:
@@ -152,7 +167,7 @@ class ConversationView(VerticalScroll):
     def start_skill(self, name: str, size: int = 0) -> SkillBlock:
         block = SkillBlock(skill_name=name, skill_size=size)
         self.mount(block)
-        self.scroll_end(animate=False)
+        self._maybe_scroll()
         return block
 
     def start_assistant(self, initial: str = "") -> AssistantMessage:
@@ -164,7 +179,7 @@ class ConversationView(VerticalScroll):
     def append_assistant(self, text: str) -> None:
         msg = self.start_assistant()
         msg.append(text)
-        self.scroll_end(animate=False)
+        self._maybe_scroll()
 
     def end_assistant(self) -> None:
         if self._active_assistant is None:
@@ -180,7 +195,7 @@ class ConversationView(VerticalScroll):
             lang, code = match.group(1) or "text", match.group(2).strip()
             if code:
                 self.mount(CodeBlock(code=code, language=lang))
-        self.scroll_end(animate=False)
+        self._maybe_scroll()
 
     # ── Search bar control ───────────────────────────────────────────
 
