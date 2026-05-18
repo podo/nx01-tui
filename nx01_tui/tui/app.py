@@ -240,14 +240,8 @@ class Nx01App(App):
         return ""
 
     async def _bootstrap_slash_dropdowns(self, flavors: list[str]) -> None:
-        """Fetch commands once + per-flavor skills/tools; feed each dropdown.
-
-        FlavorPane mounts are queued by `tabs.add_pane` (sync) but the actual
-        DOM insertion happens on the next refresh cycle, so we yield once to
-        let those mounts complete before querying the dropdowns.
-        """
+        """Fetch commands once + per-flavor skills/tools concurrently; feed each dropdown."""
         # FlavorPane mounts queued by `tabs.add_pane` settle after a refresh.
-        # Wait briefly so #slash-{flavor} is queryable.
         for _ in range(20):
             await asyncio.sleep(0.05)
             try:
@@ -255,40 +249,57 @@ class Nx01App(App):
                     break
             except Exception:  # noqa: BLE001
                 continue
+
         try:
             commands = await self.client.list_commands()
         except Exception as exc:  # noqa: BLE001
             logger.warning("slash dropdown: list_commands failed: %s", exc)
             commands = []
-        for fl in flavors:
-            try:
-                skills = await self.client.list_skills(fl)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("slash dropdown: list_skills(%s) failed: %s", fl, exc)
-                skills = []
-            try:
-                tools_resp = await self.client.get_tools(fl)
-                tools = (
-                    tools_resp.get("tools", [])
-                    if isinstance(tools_resp, dict)
-                    else (tools_resp or [])
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("slash dropdown: get_tools(%s) failed: %s", fl, exc)
-                tools = []
+
+        # Fetch skills + tools for all flavors concurrently.
+        results = await asyncio.gather(
+            *[self._fetch_flavor_dropdown_data(fl) for fl in flavors],
+            return_exceptions=True,
+        )
+
+        for fl, result in zip(flavors, results):
+            if isinstance(result, Exception):
+                logger.warning("slash dropdown: fetch failed for %s: %s", fl, result)
+                skills, tools = [], []
+            else:
+                skills, tools = result
+
             try:
                 self.query_one(f"#slash-{fl}", SlashDropdown).set_sources(
                     commands=commands, skills=skills, tools=tools
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("slash dropdown: set_sources(%s) failed: %s", fl, exc)
-            # Pre-populate skills sidebar from API data (SSE events may not fire
-            # for skills that were already installed before this session started).
+
             state = self._states.get(fl)
             pane = self._panes.get(fl)
             if state and pane and skills:
                 state.preload_skills(skills)
                 pane.sync_sidebar(state)
+
+    async def _fetch_flavor_dropdown_data(self, flavor: str) -> tuple[list, list]:
+        """Fetch skills + tools for one flavor concurrently. Returns (skills, tools)."""
+        try:
+            skills = await self.client.list_skills(flavor)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("slash dropdown: list_skills(%s) failed: %s", flavor, exc)
+            skills = []
+        try:
+            tools_resp = await self.client.get_tools(flavor)
+            tools = (
+                tools_resp.get("tools", [])
+                if isinstance(tools_resp, dict)
+                else (tools_resp or [])
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("slash dropdown: get_tools(%s) failed: %s", flavor, exc)
+            tools = []
+        return skills, tools
 
     def _focus_active_input(self) -> None:
         flavor = self._active_flavor()
