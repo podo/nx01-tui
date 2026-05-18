@@ -1,7 +1,7 @@
 # nx01-tui 10x Performance Design
 
 **Date**: 2026-05-18  
-**Goal**: 10x improvement across streaming latency, long-thread stability, and session restore speed.
+**Goal**: 10x improvement across streaming latency, long-thread stability, and session restore speed. Target: ≥60fps average frame rate during active streaming.
 
 ---
 
@@ -37,7 +37,7 @@ Already coded and CI-green. Delivers:
 
 **Problem**: Each SSE token fires `post_message → on_sse_message → widget.update() → scroll_end()`. At 50 tokens/sec that is 50 layout passes against a 16ms frame budget.
 
-**Solution**: AsyncIO queue + frame-synchronized drain at 30fps.
+**Solution**: AsyncIO queue + frame-synchronized drain at 60fps (matching display refresh target).
 
 ```python
 # __init__
@@ -46,7 +46,7 @@ self._event_queue: asyncio.Queue[SseEvent] = asyncio.Queue()
 # _sse_loop: replace post_message with queue put
 await self._event_queue.put(payload)
 
-# New method, called via set_interval(1/30, ...)
+# New method, called via set_interval(1/60, ...)
 async def _drain_events(self) -> None:
     if self._event_queue.empty():
         return
@@ -58,12 +58,12 @@ async def _drain_events(self) -> None:
 ```
 
 **Key decisions**:
-- 30fps drain cadence: fast enough to feel real-time, slow enough to batch 2–3 tokens per frame at typical streaming rate.
+- 60fps drain cadence: fast enough to feel real-time, slow enough to batch 2–3 tokens per frame at typical streaming rate.
 - Debug modal (`DebugModal.push`) still receives events — drain loop must feed it.
 - Connection status messages (`ConnectionStatusMessage`) bypass the queue (they're rare and need immediate UI response).
 - `batch_update()` groups all DOM mutations; single `scroll_end` per drain cycle.
 
-**Expected**: Max 30 layout passes/sec regardless of token rate. Streaming feels smooth because text accumulates between drains.
+**Expected**: Max 60fps target regardless of token rate. Streaming feels smooth because text accumulates between drains.
 
 ---
 
@@ -129,7 +129,8 @@ async def _bootstrap_slash_dropdowns(self, flavors: list[str]) -> None:
 
 | Metric | Current (v1.2.0) | Target |
 |--------|-----------------|--------|
-| Layout passes/sec at 50 tok/s | ~50 | ≤30 |
+| Layout passes/sec at 50 tok/s | ~50 | ≤60 (one per frame) |
+| Average frame rate during streaming | <30fps | ≥60fps |
 | Markdown parses per 1000-char response | ~50 | 1 |
 | Session restore time (50 msgs) | >1s visible stutter | <100ms |
 | Bootstrap time (3 flavors) | ~3× RTT | ~1× RTT |

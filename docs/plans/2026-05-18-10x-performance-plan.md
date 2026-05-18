@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Reduce streaming layout passes from ~50/sec to ≤30/sec, session restore from >1s to <100ms, and bootstrap from N×RTT to 1×RTT across all flavors.
+**Goal:** Achieve ≥60fps average frame rate during active streaming, session restore from >1s to <100ms, and bootstrap from N×RTT to 1×RTT across all flavors.
 
-**Architecture:** Three independent batches on top of the existing v1.2.0 codebase (main). Batch 3 adds a 30fps event drain loop to coalesce SSE events. Batch 4 wraps session replay in `batch_update()` + scroll suppression. Batch 5 parallelizes per-flavor bootstrap HTTP calls with `asyncio.gather()`.
+**Architecture:** Three independent batches on top of the existing v1.2.0 codebase (main). Batch 3 adds a 60fps event drain loop to coalesce SSE events. Batch 4 wraps session replay in `batch_update()` + scroll suppression. Batch 5 parallelizes per-flavor bootstrap HTTP calls with `asyncio.gather()`.
 
 **Tech Stack:** Python 3.11+, Textual (TUI framework), asyncio, httpx (SSE client). Run tests with `pytest -x -q tests/`.
 
@@ -155,7 +155,7 @@ git commit -m "feat(perf): add suppress_scroll context manager to ConversationVi
 
 ## Task 2: Batch 3 — SSE event micro-batching
 
-**Why:** Currently every SSE event triggers `post_message → on_sse_message → _dispatch_event → widget.update() → scroll_end`. At 50 tok/sec that's 50 full layout passes per second. We drain the queue 30 times/sec instead — max 30 layout passes regardless of token rate.
+**Why:** Currently every SSE event triggers `post_message → on_sse_message → _dispatch_event → widget.update() → scroll_end`. At 50 tok/sec that's 50 full layout passes per second. We drain the queue 60 times/sec instead — ≤60 layout passes/sec (matching display refresh).
 
 **Files:**
 - Modify: `nx01_tui/tui/app.py`
@@ -193,7 +193,7 @@ async def test_sse_events_go_into_queue_not_immediate(monkeypatch):
         # Immediately after put, it should still be in the queue (not drained yet)
         assert not app._event_queue.empty()
 
-        # After one drain cycle (≥1/30s), queue should be empty
+        # After one drain cycle (≥1/60s), queue should be empty
         await pilot.pause(0.1)
         assert app._event_queue.empty()
 
@@ -268,7 +268,7 @@ Keep the `ConnectionStatusMessage` lines unchanged — they still use `post_mess
 
 ```python
 async def _drain_events(self) -> None:
-    """Drain the SSE event queue in one batch per 30fps interval."""
+    """Drain the SSE event queue in one batch per 60fps interval."""
     if self._event_queue.empty():
         return
     flavor = self._active_flavor()
@@ -330,7 +330,7 @@ Expected: all pass. If any test directly posts `SseMessage`, update it to put to
 
 ```bash
 git add nx01_tui/tui/app.py tests/integration/test_sse_batching.py
-git commit -m "perf(batch3): SSE event micro-batching — max 30 layout passes/sec"
+git commit -m "perf(batch3): SSE event micro-batching — max 60fps target"
 ```
 
 ---
@@ -740,6 +740,6 @@ git revert <commit-sha>   # creates a revert commit, no force push needed
 | Metric | Before | After |
 |--------|--------|-------|
 | scroll_end calls per 10 streamed tokens | 10 | 1 |
-| Layout passes/sec at 50 tok/s | ~50 | ≤30 |
+| Layout passes/sec at 50 tok/s | ~50 | ≤60 (one per frame) |
 | scroll_end calls during 50-msg replay | ~100 | 1 |
 | Bootstrap HTTP calls serialized | N×2 sequential | N parallel |
