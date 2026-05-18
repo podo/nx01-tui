@@ -882,9 +882,7 @@ class Nx01App(App):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("auto-resume %s failed: %s", flavor, exc)
 
-    async def _auto_resume_flavor(
-        self, flavor: str, session_id: str, quit_ts: float
-    ) -> None:
+    async def _auto_resume_flavor(self, flavor: str, session_id: str, quit_ts: float) -> None:
         try:
             await self.client.resume_session(session_id)
         except Exception as exc:  # noqa: BLE001
@@ -906,9 +904,11 @@ class Nx01App(App):
                 ts = row.get("timestamp") or row.get("created_at") or 0
                 if isinstance(ts, str):
                     try:
-                        ts = datetime.datetime.fromisoformat(
-                            ts.replace("Z", "+00:00")
-                        ).replace(tzinfo=datetime.UTC).timestamp()
+                        ts = (
+                            datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            .replace(tzinfo=datetime.UTC)
+                            .timestamp()
+                        )
                     except Exception:  # noqa: BLE001
                         ts = 0
                 if float(ts) > quit_ts:

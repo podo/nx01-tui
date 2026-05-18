@@ -129,7 +129,8 @@ def _batch_convert_svgs() -> None:
         try:
             result = subprocess.run(
                 ["rsvg-convert", "-w", "1800", svg, "-o", png],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
             if result.returncode == 0:
                 print(f"  converted {Path(svg).name}")
@@ -312,6 +313,7 @@ async def run() -> Report:
         label_text = ""
         if tb:
             from textual.widgets import Static
+
             try:
                 lbl = tb.query_one("#label", Static)
                 label_text = str(lbl.render())
@@ -344,9 +346,7 @@ async def run() -> Report:
         app._dispatch_event(parse_event(hex_tool_event))
         await pilot.pause(0.3)
         tool_blocks = list(conv.query(ToolCallBlock))
-        hex_block = next(
-            (b for b in tool_blocks if b.call_id == "tc-abcdef012345"), None
-        )
+        hex_block = next((b for b in tool_blocks if b.call_id == "tc-abcdef012345"), None)
         shows_no_hex = hex_block is not None and hex_block.tool != "tc-abcdef012345"
         shows_readable = hex_block is not None and hex_block.tool == "delegate"
         png = _screenshot(app, 4, "tool_hex_hidden")
@@ -370,6 +370,7 @@ async def run() -> Report:
         dismissed = False
         if is_modal:
             from textual.widgets import OptionList
+
             lst = modal.query_one("#session-list", OptionList)
             # Find the first selectable option
             for i in range(lst.option_count):
@@ -437,15 +438,17 @@ async def run() -> Report:
     # rows in fake_get_session_messages (time.time()+1) are clearly "new".
     quit_ts = time.time() - 10
     _STATE_FILE.write_text(
-        json.dumps({
-            "version": 1,
-            "sessions": {
-                "assistant": {
-                    "session_id": "sess_alpha",
-                    "quit_ts": quit_ts,
-                }
-            },
-        })
+        json.dumps(
+            {
+                "version": 1,
+                "sessions": {
+                    "assistant": {
+                        "session_id": "sess_alpha",
+                        "quit_ts": quit_ts,
+                    }
+                },
+            }
+        )
     )
 
     app2 = Nx01App("http://mock", api_key="test", flavors=["assistant", "operator"])
