@@ -12,6 +12,7 @@ Provides a small API the App layer uses without poking at internals:
 from __future__ import annotations
 
 import re
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from textual.containers import VerticalScroll
@@ -73,19 +74,19 @@ class ConversationView(VerticalScroll):
         self._active_tools: dict[str, ToolCallBlock] = {}
         self._empty_state: _EmptyState | None = None
         self._unread_divider: UnreadDivider | None = None
-        self._scroll_suppressed: bool = False
+        self._scroll_suppress_depth: int = 0
 
     @contextmanager
-    def suppress_scroll(self):
-        """Suppress scroll_end calls during batch operations."""
-        self._scroll_suppressed = True
+    def suppress_scroll(self) -> Generator[None, None, None]:
+        """Suppress scroll_end calls during batch operations. Re-entrant safe."""
+        self._scroll_suppress_depth += 1
         try:
             yield
         finally:
-            self._scroll_suppressed = False
+            self._scroll_suppress_depth -= 1
 
     def _maybe_scroll(self) -> None:
-        if not self._scroll_suppressed:
+        if self._scroll_suppress_depth == 0:
             self.scroll_end(animate=False)
 
     def on_mount(self) -> None:

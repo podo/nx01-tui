@@ -35,7 +35,8 @@ async def test_suppress_scroll_prevents_intermediate_scrolls():
         # No scrolls during suppression
         assert scroll_calls == [], f"Expected no scrolls during suppression, got {len(scroll_calls)}"
 
-        # Explicit scroll after suppression works
-        before = len(scroll_calls)
-        conv.scroll_end(animate=False)
-        assert len(scroll_calls) == before + 1
+        # After suppression is released, _maybe_scroll must fire normally
+        conv.append_assistant("post-suppression text")
+        assert len(scroll_calls) == 1, (
+            f"Expected _maybe_scroll to fire after suppression released, got {len(scroll_calls)}"
+        )
