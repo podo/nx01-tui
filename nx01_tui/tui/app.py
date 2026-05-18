@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import datetime
 import json
 import logging
 import re
@@ -905,10 +906,9 @@ class Nx01App(App):
                 ts = row.get("timestamp") or row.get("created_at") or 0
                 if isinstance(ts, str):
                     try:
-                        from datetime import datetime, timezone
-                        ts = datetime.fromisoformat(
+                        ts = datetime.datetime.fromisoformat(
                             ts.replace("Z", "+00:00")
-                        ).replace(tzinfo=timezone.utc).timestamp()
+                        ).replace(tzinfo=datetime.UTC).timestamp()
                     except Exception:  # noqa: BLE001
                         ts = 0
                 if float(ts) > quit_ts:
