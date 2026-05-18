@@ -357,15 +357,20 @@ class Nx01App(App):
         conv = pane.conversation if pane else None
 
         ctx = conv.suppress_scroll() if conv is not None else nullcontext()
+        scrolled_active = False
+        # No awaits inside the drain — atomicity required for get_nowait safety.
         with self.batch_update(), ctx:
             while not self._event_queue.empty():
                 event = self._event_queue.get_nowait()
                 self._debug_buffer.append(event)
                 if self._debug_modal is not None:
                     self._debug_modal.push(event)
+                event_flavor = event.flavor or self._active_flavor()
                 self._dispatch_event(event)
+                if event_flavor == flavor:
+                    scrolled_active = True
 
-        if conv is not None:
+        if conv is not None and scrolled_active:
             conv.scroll_end(animate=False)
 
     def _dispatch_event(self, event: SseEvent) -> None:

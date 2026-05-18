@@ -34,6 +34,10 @@ async def test_sse_events_accumulate_then_drain():
         await pilot.pause(0.1)
         assert app._event_queue.empty()
 
+        # Verify the event was actually dispatched (not silently lost)
+        from nx01_tui.tui.state import AgentState
+        assert app._states["assistant"].state == AgentState.STREAMING
+
 
 @pytest.mark.asyncio
 async def test_connection_status_still_immediate():
