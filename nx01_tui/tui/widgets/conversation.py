@@ -72,10 +72,20 @@ class ConversationView(VerticalScroll):
         self._active_tools: dict[str, ToolCallBlock] = {}
         self._empty_state: _EmptyState | None = None
         self._unread_divider: UnreadDivider | None = None
+        self._scroll_pending: bool = False
 
     def on_mount(self) -> None:
         self._empty_state = _EmptyState(_EMPTY_HINT)
         self.mount(self._empty_state)
+        self.set_interval(0.1, self._flush_scroll)
+
+    def _request_scroll(self) -> None:
+        self._scroll_pending = True
+
+    def _flush_scroll(self) -> None:
+        if self._scroll_pending:
+            self.scroll_end(animate=False)
+            self._scroll_pending = False
 
     def _clear_empty_state(self) -> None:
         if self._empty_state is not None:
@@ -117,7 +127,7 @@ class ConversationView(VerticalScroll):
     def append_thinking(self, text: str) -> None:
         block = self.start_thinking()
         block.append_chunk(text)
-        self.scroll_end(animate=False)
+        self._request_scroll()
 
     def end_thinking(self, auto_collapse: bool = True) -> None:
         if self._active_thinking is not None:
@@ -164,7 +174,7 @@ class ConversationView(VerticalScroll):
     def append_assistant(self, text: str) -> None:
         msg = self.start_assistant()
         msg.append(text)
-        self.scroll_end(animate=False)
+        self._request_scroll()
 
     def end_assistant(self) -> None:
         if self._active_assistant is None:

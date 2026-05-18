@@ -88,7 +88,7 @@ class ToolCallBlock(Vertical):
 
     def on_mount(self) -> None:
         self._refresh_status_display()
-        self._timer = self.set_interval(0.2, self._tick)
+        self._timer = self.set_interval(0.5, self._tick)
 
     def _tick(self) -> None:
         if self.status not in (ToolStatus.ACTIVE,):

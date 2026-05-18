@@ -54,18 +54,29 @@ class AssistantMessage(Vertical):
         super().__init__(**kwargs)
         self._buffer = initial
         self._md: Markdown | None = None
+        self._dirty: bool = bool(initial)
+        self._flush_timer = None
 
     def compose(self) -> ComposeResult:
         yield Static("── assistant ──", classes="role-divider")
         self._md = Markdown(self._buffer)
         yield self._md
 
+    def on_mount(self) -> None:
+        self._flush_timer = self.set_interval(0.05, self._flush)
+
+    def _flush(self) -> None:
+        if self._dirty and self._md is not None:
+            self._md.update(self._buffer)
+            self._dirty = False
+
     def append(self, text: str) -> None:
         self._buffer += text
-        if self._md is not None:
-            self._md.update(self._buffer)
+        self._dirty = True
 
     def finalise(self) -> None:
-        # Buffer is the source of truth — no extra re-render needed since
-        # `append` already pushed every chunk.
-        return
+        if self._flush_timer is not None:
+            self._flush_timer.stop()
+        if self._md is not None:
+            self._md.update(self._buffer)
+        self._dirty = False
