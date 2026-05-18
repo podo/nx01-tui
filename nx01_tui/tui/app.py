@@ -702,43 +702,46 @@ class Nx01App(App):
         from .state import ToolStatus
 
         conv = self._panes[flavor].conversation
-        for i, row in enumerate(rows):
-            if unread_from_row is not None and i == unread_from_row:
-                new_count = len(rows) - unread_from_row
-                conv.insert_unread_divider(new_count)
+        with self.batch_update(), conv.suppress_scroll():
+            for i, row in enumerate(rows):
+                if unread_from_row is not None and i == unread_from_row:
+                    new_count = len(rows) - unread_from_row
+                    conv.insert_unread_divider(new_count)
 
-            role = row.get("role", "")
-            reasoning = row.get("reasoning") or row.get("reasoning_content") or ""
-            if reasoning:
-                t = conv.start_thinking()
-                t.append_chunk(reasoning)
-                conv.end_thinking(auto_collapse=True)
+                role = row.get("role", "")
+                reasoning = row.get("reasoning") or row.get("reasoning_content") or ""
+                if reasoning:
+                    t = conv.start_thinking()
+                    t.append_chunk(reasoning)
+                    conv.end_thinking(auto_collapse=True)
 
-            if role == "user":
-                content = row.get("content") or ""
-                if content:
-                    conv.add_user_message(str(content))
-            elif role == "assistant":
-                content = row.get("content") or ""
-                if content:
-                    conv.start_assistant(str(content))
-                    conv.end_assistant()
-                for tc in row.get("tool_calls") or []:
-                    name = tc.get("name") or tc.get("function", {}).get("name", "tool")
-                    args = tc.get("arguments") or tc.get("function", {}).get("arguments", "")
-                    call_id = tc.get("id", "")
-                    block = conv.start_tool(tool=str(name), args=str(args), call_id=call_id)
+                if role == "user":
+                    content = row.get("content") or ""
+                    if content:
+                        conv.add_user_message(str(content))
+                elif role == "assistant":
+                    content = row.get("content") or ""
+                    if content:
+                        conv.start_assistant(str(content))
+                        conv.end_assistant()
+                    for tc in row.get("tool_calls") or []:
+                        name = tc.get("name") or tc.get("function", {}).get("name", "tool")
+                        args = tc.get("arguments") or tc.get("function", {}).get("arguments", "")
+                        call_id = tc.get("id", "")
+                        block = conv.start_tool(tool=str(name), args=str(args), call_id=call_id)
+                        block.set_status(ToolStatus.DONE)
+                elif role == "tool":
+                    call_id = row.get("tool_call_id", "")
+                    tool_name = row.get("tool_name") or "tool"
+                    output = row.get("content") or ""
+                    block = conv.get_tool(call_id) if call_id else None
+                    if block is None:
+                        block = conv.start_tool(tool=str(tool_name), args="", call_id=call_id)
+                    if output:
+                        block.append_output(str(output))
                     block.set_status(ToolStatus.DONE)
-            elif role == "tool":
-                call_id = row.get("tool_call_id", "")
-                tool_name = row.get("tool_name") or "tool"
-                output = row.get("content") or ""
-                block = conv.get_tool(call_id) if call_id else None
-                if block is None:
-                    block = conv.start_tool(tool=str(tool_name), args="", call_id=call_id)
-                if output:
-                    block.append_output(str(output))
-                block.set_status(ToolStatus.DONE)
+        # Single scroll after all mounts — suppress_scroll is now released.
+        conv.scroll_end(animate=False)
 
     def action_open_memory(self) -> None:
         self.run_worker(self._open_memory(), exclusive=False)
