@@ -1,10 +1,14 @@
-# nx01-tui · v1.1
+# nx01-tui · v1.3
 
 Operator cockpit for the [NX01](https://github.com/podo/nx01) fleet — a full-screen Textual TUI plus chat / watch / doctor / install / update CLIs.
 
-**v1.1** adds session persistence and polish: auto-resume last session on restart with an unread-message divider, skills sidebar pre-populated on boot, thinking block stays expanded inline (opencode-style), hex tool call_ids replaced with readable labels in both the conversation and activity sidebar, compact model name in header (`opus-4.5` not `claude-opus-4-5-20250514`), and sessions modal Enter-key fix.
+**v1.3** performance and reliability: 8x fewer DOM writes on long threads, `Ctrl+N` new session now starts blank and clears saved state so the next boot doesn't accidentally resume an abandoned session.
 
-**v1.0** ships the full UX pass tracked in [#26](https://github.com/podo/nx01-tui/issues/26): merged slash dropdown (commands + skills + tools), session resume that replays full chat history, responsive sidebar, mouse + keyboard parity on collapsable blocks, list-focused modals with hidden filters, Tab + Ctrl+1..9 flavor jumps.
+**v1.2** conversation polish: thinking block auto-collapses on turn completion (click header to review — opencode V1 style), orphan tool-call rows eliminated, session auto-resume on Ctrl+C and terminal tab close (not just graceful quit).
+
+**v1.1** adds session persistence: auto-resume last session on restart with an unread-message divider, skills sidebar pre-populated on boot, hex tool call_ids replaced with readable labels, compact model name in header.
+
+**v1.0** ships the full UX pass: merged slash dropdown (commands + skills + tools), session resume with full history replay, responsive sidebar, collapsible blocks, list-focused modals, Tab + Ctrl+1..9 flavor jumps.
 
 ## Quick start
 
