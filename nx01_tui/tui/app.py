@@ -788,8 +788,13 @@ class Nx01App(App):
     async def action_new_session(self) -> None:
         flavor = self._active_flavor()
         if flavor and flavor in self._states:
-            self._states[flavor].clear_for_new_turn()
-            self._states[flavor].messages = []
+            self._states[flavor] = FlavorState(name=flavor)
+            pane = self._panes.get(flavor)
+            if pane:
+                pane.conversation.reset_for_new_session()
+                pane.sync_sidebar(self._states[flavor])
+            self._active_session_id.pop(flavor, None)
+            self._save_session_state()
             self.notify(f"New session in {flavor}")
 
     def action_toggle_sidebar(self) -> None:
