@@ -76,12 +76,14 @@ async def test_auto_resume_replays_saved_session(tmp_path, monkeypatch):
     """App reads state file on boot and replays session into conversation."""
     state_file = tmp_path / "nx01_tui_state.json"
     state_file.write_text(
-        json.dumps({
-            "version": 1,
-            "sessions": {
-                "assistant": {"session_id": "sess_saved", "quit_ts": time.time() - 10}
-            },
-        })
+        json.dumps(
+            {
+                "version": 1,
+                "sessions": {
+                    "assistant": {"session_id": "sess_saved", "quit_ts": time.time() - 10}
+                },
+            }
+        )
     )
     monkeypatch.setattr(app_module, "_STATE_FILE", state_file)
 
@@ -104,12 +106,12 @@ async def test_auto_resume_sets_active_session_id(tmp_path, monkeypatch):
     """After auto-resume, next send carries the resumed session_id."""
     state_file = tmp_path / "nx01_tui_state.json"
     state_file.write_text(
-        json.dumps({
-            "version": 1,
-            "sessions": {
-                "assistant": {"session_id": "sess_abc", "quit_ts": time.time() - 5}
-            },
-        })
+        json.dumps(
+            {
+                "version": 1,
+                "sessions": {"assistant": {"session_id": "sess_abc", "quit_ts": time.time() - 5}},
+            }
+        )
     )
     monkeypatch.setattr(app_module, "_STATE_FILE", state_file)
 
