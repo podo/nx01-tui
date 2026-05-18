@@ -70,6 +70,9 @@ class FlavorState:
     thinking_duration_ms: int = 0
     tool_calls: list[ToolCall] = field(default_factory=list)
     last_turn_tools: list[ToolCall] = field(default_factory=list)
+    _tc_done: int = field(default=0, init=False, repr=False)
+    _tc_active: int = field(default=0, init=False, repr=False)
+    _tc_queued: int = field(default=0, init=False, repr=False)
     skills_loaded: list[dict[str, Any]] = field(default_factory=list)
     token_usage: dict[str, int] = field(
         default_factory=lambda: {"input": 0, "output": 0, "total": 0}
@@ -109,6 +112,22 @@ class FlavorState:
         self.thinking_lines = []
         self.thinking_active = False
 
+    def _tc_dec(self, status: ToolStatus) -> None:
+        if status == ToolStatus.DONE:
+            self._tc_done = max(0, self._tc_done - 1)
+        elif status == ToolStatus.ACTIVE:
+            self._tc_active = max(0, self._tc_active - 1)
+        elif status == ToolStatus.QUEUED:
+            self._tc_queued = max(0, self._tc_queued - 1)
+
+    def _tc_inc(self, status: ToolStatus) -> None:
+        if status == ToolStatus.DONE:
+            self._tc_done += 1
+        elif status == ToolStatus.ACTIVE:
+            self._tc_active += 1
+        elif status == ToolStatus.QUEUED:
+            self._tc_queued += 1
+
     def apply_tool(self, tool: str, args: str, status: str, call_id: str = "") -> ToolCall:
         """Create or update a tool call by call_id."""
         existing = next((tc for tc in self.tool_calls if tc.call_id == call_id and call_id), None)
@@ -117,7 +136,9 @@ class FlavorState:
                 tool=tool, args=args, call_id=call_id or f"{tool}-{len(self.tool_calls)}"
             )
             self.tool_calls.append(existing)
+            self._tc_queued += 1  # ToolCall default status is QUEUED
 
+        old_status = existing.status
         backend_status = status.lower()
         if backend_status in ("started", "in_progress", "pending"):
             existing.status = ToolStatus.ACTIVE
@@ -128,6 +149,10 @@ class FlavorState:
         elif backend_status in ("error", "failed"):
             existing.status = ToolStatus.ERROR
             existing.elapsed_ms = int((time.monotonic() - existing.started_at) * 1000)
+
+        if existing.status != old_status:
+            self._tc_dec(old_status)
+            self._tc_inc(existing.status)
         return existing
 
     def apply_skill_loaded(self, skill_name: str, skill_size: int) -> None:
@@ -159,6 +184,9 @@ class FlavorState:
 
     def clear_for_new_turn(self) -> None:
         self.tool_calls = []
+        self._tc_done = 0
+        self._tc_active = 0
+        self._tc_queued = 0
         self.thinking_lines = []
         self.thinking_active = False
         self.error_message = ""
@@ -173,10 +201,7 @@ class FlavorState:
 
     def activity_summary(self) -> tuple[int, int, int]:
         """(done, active, queued) tool count for the current turn."""
-        done = sum(1 for tc in self.tool_calls if tc.status == ToolStatus.DONE)
-        active = sum(1 for tc in self.tool_calls if tc.status == ToolStatus.ACTIVE)
-        queued = sum(1 for tc in self.tool_calls if tc.status == ToolStatus.QUEUED)
-        return done, active, queued
+        return self._tc_done, self._tc_active, self._tc_queued
 
 
 # ── SSE event → state routing ────────────────────────────────────────

@@ -88,7 +88,7 @@ class ToolCallBlock(Vertical):
 
     def on_mount(self) -> None:
         self._refresh_status_display()
-        self._timer = self.set_interval(0.2, self._tick)
+        self._timer = self.set_interval(0.5, self._tick)
 
     def _tick(self) -> None:
         if self.status not in (ToolStatus.ACTIVE,):
@@ -140,10 +140,9 @@ class ToolCallBlock(Vertical):
     # ── Content ──────────────────────────────────────────────────────
 
     def append_output(self, text: str) -> None:
-        if self._log is None:
+        if self._log is None or not text:
             return
-        for line in text.splitlines() or [text]:
-            self._log.write(Text(line))
+        self._log.write(Text(text.rstrip("\n") or text))
 
     def append_diff(self, old: str, new: str, filename: str = "") -> None:
         """Write a colored unified diff into the output log."""

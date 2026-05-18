@@ -59,6 +59,7 @@ class ThinkingBlock(Vertical):
         self._duration_ms = 0
         self._timer = None
         self._log: RichLog | None = None
+        self._last_seconds: int = -1
 
     def compose(self) -> ComposeResult:
         # While streaming, only the spinner is visible (single indicator —
@@ -77,24 +78,25 @@ class ThinkingBlock(Vertical):
         yield log
 
     def on_mount(self) -> None:
-        self._timer = self.set_interval(0.1, self._tick_duration)
+        self._timer = self.set_interval(0.5, self._tick_duration)
 
     def _tick_duration(self) -> None:
         if not self.thinking:
             return
         elapsed = int((time.monotonic() - self._started_at) * 1000)
         seconds = elapsed // 1000
+        if seconds == self._last_seconds:
+            return
+        self._last_seconds = seconds
         try:
             self.query_one("#label", Static).update(f"[bold]Thinking…[/]  [dim]{seconds}s[/]")
         except Exception:  # noqa: BLE001
             pass
 
     def append_chunk(self, text: str) -> None:
-        if self._log is None:
+        if self._log is None or not text:
             return
-        # Strip trailing newline pieces — RichLog already line-breaks.
-        for line in text.splitlines() or [text]:
-            self._log.write(Text(line, style="dim"))
+        self._log.write(Text(text.rstrip("\n") or text, style="dim"))
 
     def done(self, auto_collapse: bool = True) -> None:
         """Mark thinking complete; auto-collapses by default (V1 behaviour).
