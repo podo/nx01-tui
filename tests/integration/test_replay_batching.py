@@ -23,8 +23,7 @@ async def test_replay_scroll_called_once(monkeypatch):
     async with app.run_test() as pilot:
         await pilot.pause(0.3)
         pane = app._panes.get("assistant")
-        if pane is None:
-            pytest.skip("no assistant pane")
+        assert pane is not None, "assistant pane not mounted after 0.3s — bootstrap too slow or broken"
         conv = pane.conversation
         original = conv.scroll_end
 
@@ -49,8 +48,7 @@ async def test_replay_content_correct():
     async with app.run_test() as pilot:
         await pilot.pause(0.3)
         pane = app._panes.get("assistant")
-        if pane is None:
-            pytest.skip("no assistant pane")
+        assert pane is not None, "assistant pane not mounted after 0.3s — bootstrap too slow or broken"
         conv = pane.conversation
 
         rows = [

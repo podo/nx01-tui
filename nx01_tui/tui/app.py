@@ -685,6 +685,8 @@ class Nx01App(App):
         flavor: str,
         rows: list[dict],
         unread_from_row: int | None = None,
+        *,
+        scroll_after: bool = True,
     ) -> None:
         """Render historical DB rows as if they had just streamed live.
 
@@ -741,7 +743,8 @@ class Nx01App(App):
                         block.append_output(str(output))
                     block.set_status(ToolStatus.DONE)
         # Single scroll after all mounts — suppress_scroll is now released.
-        conv.scroll_end(animate=False)
+        if scroll_after:
+            conv.scroll_end(animate=False)
 
     def action_open_memory(self) -> None:
         self.run_worker(self._open_memory(), exclusive=False)
@@ -943,7 +946,7 @@ class Nx01App(App):
         self._states[flavor] = FlavorState(name=flavor)
         pane.conversation.reset_for_replay()
         self._active_session_id[flavor] = session_id
-        self._replay_messages(flavor, rows, unread_from_row=unread_from_row)
+        self._replay_messages(flavor, rows, unread_from_row=unread_from_row, scroll_after=False)
 
         if unread_from_row is not None and unread_from_row < len(rows):
             new_count = len(rows) - unread_from_row
