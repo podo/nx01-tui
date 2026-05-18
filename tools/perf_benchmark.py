@@ -1,11 +1,16 @@
 """
-tools/perf_benchmark.py — streaming render performance: old vs new.
+tools/perf_benchmark.py — streaming render performance across three versions.
 
-Simulates two scenarios:
-  A) Short thread:  20 turns × 200 chunks  = 4 000 chunks
-  B) Long thread:   80 turns × 500 chunks  = 40 000 chunks
+  Baseline  — original code, zero optimisations
+  Batch 1   — 5 fixes: debounce Markdown/scroll, slower timers, O(1) counters
+  Batch 2   — 4 new fixes: Static streaming, single RichLog writes, freeze, paging
 
-Chunk rate: 8 ms/chunk (typical LLM streaming throughput).
+Scenarios:
+  A) Short thread:  20 turns, 200 chunks/turn, 3 tool calls/turn
+  B) Long thread:   80 turns, 500 chunks/turn, 5 tool calls/turn
+
+Chunk rate: 8 ms/chunk (~125 tokens/sec).
+Tool output: 30 lines per result (typical grep/read response).
 
 Run with:  uv run python tools/perf_benchmark.py
 """
@@ -13,195 +18,213 @@ Run with:  uv run python tools/perf_benchmark.py
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+
+CHUNK_MS = 8.0          # ms between tokens
+MD_FLUSH_MS = 50.0      # Markdown/Static flush interval (batch 1+2)
+SCROLL_FLUSH_MS = 100.0 # scroll_end debounce interval (batch 1+2)
+THINKING_S = 3.0        # avg seconds of thinking per turn
+TOOL_ACTIVE_S = 1.5     # avg seconds one tool runs
+TOOL_OUTPUT_LINES = 30  # avg lines in one tool result
+MAX_MOUNTED_TURNS = 30  # paging cap (batch 2)
+MD_CHILD_NODES = 18     # avg Textual Markdown child widgets per response
 
 
-# ── Model ─────────────────────────────────────────────────────────────
-
-@dataclass
-class SimResult:
-    scenario: str
-    turns: int
-    chunks_total: int
-    chunk_ms: float
-    # streaming
-    md_updates_old: int = 0
-    md_updates_new: int = 0
-    scroll_old: int = 0
-    scroll_new: int = 0
-    # timers  (fires across entire session, all active blocks)
-    thinking_timer_old: int = 0
-    thinking_timer_new: int = 0
-    tool_timer_old: int = 0
-    tool_timer_new: int = 0
+def _fmt(n: int) -> str:
+    return f"{n:>8,}"
 
 
-# ── Simulation helpers ────────────────────────────────────────────────
-
-def sim_streaming(
-    turns: int,
-    chunks_per_turn: int,
-    chunk_ms: float,
-    md_flush_ms: float = 50.0,
-    scroll_flush_ms: float = 100.0,
-) -> tuple[int, int, int, int]:
-    """Return (md_old, md_new, scroll_old, scroll_new) for N turns."""
-    md_old = 0
-    md_new = 0
-    scroll_old = 0
-    scroll_new = 0
-
-    for _ in range(turns):
-        turn_ms = chunks_per_turn * chunk_ms
-        # old: 1 md.update() per chunk; 1 scroll_end per chunk
-        md_old += chunks_per_turn
-        scroll_old += chunks_per_turn
-        # new: 1 flush per interval (+ 1 for finalise at end-of-turn)
-        md_new += int(turn_ms / md_flush_ms) + 1
-        scroll_new += int(turn_ms / scroll_flush_ms) + 1
-
-    return md_old, md_new, scroll_old, scroll_new
+def _ratio(a: int, b: int) -> str:
+    if b == 0:
+        return "  ∞"
+    r = a / b
+    return f"{r:>6.1f}x"
 
 
-def sim_timers(
-    session_seconds: float,
-    thinking_seconds_per_turn: float = 3.0,
-    tool_active_seconds_per_turn: float = 2.0,
-    turns: int = 1,
-    thinking_old_hz: float = 10.0,
-    thinking_new_hz: float = 2.0,
-    tool_old_hz: float = 5.0,
-    tool_new_hz: float = 2.0,
-) -> tuple[int, int, int, int]:
-    """Return (thinking_old, thinking_new, tool_old, tool_new) timer fires."""
-    thinking_total_s = thinking_seconds_per_turn * turns
-    tool_total_s = tool_active_seconds_per_turn * turns
+# ── Per-turn simulators ───────────────────────────────────────────────────────
 
-    thinking_old = int(thinking_total_s * thinking_old_hz)
-    thinking_new = int(thinking_total_s * thinking_new_hz)
-    tool_old = int(tool_total_s * tool_old_hz)
-    tool_new = int(tool_total_s * tool_new_hz)
+def streaming_writes(chunks: int, version: int) -> int:
+    """How many Markdown/Static DOM-writes happen during one streaming turn."""
+    if version == 0:
+        return chunks            # one full Markdown.update per chunk
+    elif version == 1:
+        turn_ms = chunks * CHUNK_MS
+        return int(turn_ms / MD_FLUSH_MS) + 1   # batched; +1 for finalise
+    else:  # version 2: Static.update (no parse) during stream, 1 Markdown at end
+        turn_ms = chunks * CHUNK_MS
+        return int(turn_ms / MD_FLUSH_MS) + 1   # same flush count but much cheaper
 
-    return thinking_old, thinking_new, tool_old, tool_new
+def streaming_parse_ops(chunks: int, version: int) -> int:
+    """How many *full Markdown parse operations* happen during one streaming turn."""
+    if version == 0:
+        return chunks            # parse on every chunk
+    elif version == 1:
+        turn_ms = chunks * CHUNK_MS
+        return int(turn_ms / MD_FLUSH_MS) + 1   # parse on every 50ms flush
+    else:  # version 2: Static during stream (no parse); 1 parse on finalise
+        return 1
+
+def scroll_calls(chunks: int, version: int) -> int:
+    if version == 0:
+        return chunks            # scroll_end per chunk
+    else:
+        turn_ms = chunks * CHUNK_MS
+        return int(turn_ms / SCROLL_FLUSH_MS) + 1
+
+def thinking_timer_fires(turns: int, version: int) -> int:
+    hz = 10.0 if version == 0 else 2.0   # batch 1+2: 0.5s interval
+    return int(turns * THINKING_S * hz)
+
+def tool_timer_fires(turns: int, tools_per_turn: int, version: int) -> int:
+    hz = 5.0 if version == 0 else 2.0
+    return int(turns * tools_per_turn * TOOL_ACTIVE_S * hz)
+
+def richlog_writes_tools(turns: int, tools_per_turn: int, version: int) -> int:
+    """RichLog.write() calls across all tool outputs."""
+    calls_per_result = TOOL_OUTPUT_LINES if version == 0 else 1
+    return turns * tools_per_turn * calls_per_result
+
+def dom_nodes_peak(turns: int, version: int) -> int:
+    """Estimated peak DOM node count (completed conversation)."""
+    nodes_per_turn = 2 + MD_CHILD_NODES  # user msg + assistant markdown subtree
+    if version < 2:
+        return turns * nodes_per_turn            # unbounded
+    # version 2: freeze collapses Markdown to 1 Static; paging caps to MAX_MOUNTED_TURNS
+    active_turns = min(turns, MAX_MOUNTED_TURNS)
+    frozen_nodes = 2  # user msg + 1 Static (frozen)
+    return active_turns * frozen_nodes
 
 
-# ── Scenarios ─────────────────────────────────────────────────────────
-
-CHUNK_MS = 8.0  # 8 ms between tokens ≈ ~125 tokens/sec
+# ── Scenarios ─────────────────────────────────────────────────────────────────
 
 SCENARIOS = [
-    ("short thread", 20, 200),
-    ("long thread",  80, 500),
+    ("short thread", 20, 200, 3),
+    ("long thread",  80, 500, 5),
 ]
 
 
-def run() -> list[SimResult]:
+def simulate(turns: int, chunks: int, tools: int) -> list[dict]:
+    """Return list of metric dicts for versions 0, 1, 2."""
     results = []
-    for label, turns, chunks in SCENARIOS:
-        chunks_total = turns * chunks
-        session_seconds = chunks_total * CHUNK_MS / 1000
-
-        md_old, md_new, scroll_old, scroll_new = sim_streaming(
-            turns, chunks, CHUNK_MS
-        )
-        t_old, t_new, tool_old, tool_new = sim_timers(
-            session_seconds,
-            thinking_seconds_per_turn=3.0,
-            tool_active_seconds_per_turn=2.0,
-            turns=turns,
-        )
-
-        r = SimResult(
-            scenario=label,
-            turns=turns,
-            chunks_total=chunks_total,
-            chunk_ms=CHUNK_MS,
-            md_updates_old=md_old,
-            md_updates_new=md_new,
-            scroll_old=scroll_old,
-            scroll_new=scroll_new,
-            thinking_timer_old=t_old,
-            thinking_timer_new=t_new,
-            tool_timer_old=tool_old,
-            tool_timer_new=tool_new,
-        )
-        results.append(r)
+    for v in range(3):
+        parse_ops   = sum(streaming_parse_ops(chunks, v) for _ in range(turns))
+        scroll      = sum(scroll_calls(chunks, v) for _ in range(turns))
+        think_timer = thinking_timer_fires(turns, v)
+        tool_timer  = tool_timer_fires(turns, tools, v)
+        log_writes  = richlog_writes_tools(turns, tools, v)
+        dom         = dom_nodes_peak(turns, v)
+        results.append({
+            "parse_ops":   parse_ops,
+            "scroll":      scroll,
+            "think_timer": think_timer,
+            "tool_timer":  tool_timer,
+            "log_writes":  log_writes,
+            "dom_nodes":   dom,
+            "total_hot":   parse_ops + scroll + think_timer + tool_timer + log_writes,
+        })
     return results
 
 
-# ── Also measure actual Python overhead ───────────────────────────────
+# ── Python-side micro-benchmark ───────────────────────────────────────────────
 
-def measure_append_overhead() -> tuple[float, float]:
-    """Wall-time for 10 000 string appends: old (no dirty flag) vs new."""
-    N = 10_000
+def measure_append_overhead(n: int = 10_000) -> tuple[float, float, float]:
+    """Wall-time for N chunk appends under three regimes."""
     buf = ""
-    update_count = 0
 
-    # Old: append + call update every time
+    # v0: append + Markdown.update (simulate with len() call as proxy for parse cost)
     t0 = time.perf_counter()
-    for i in range(N):
+    for i in range(n):
         buf += "x"
-        # simulate work done by Markdown.update (just counting here)
-        update_count += 1
-    old_ms = (time.perf_counter() - t0) * 1000
+        _ = len(buf)   # proxy: O(1) but forces a real loop iteration
+    v0_ms = (time.perf_counter() - t0) * 1000
 
-    # New: append + set dirty flag (update called 50ms/8ms ≈ 6x less often)
+    # v1: append + dirty flag (same flush rate, but lighter "parse")
     buf = ""
     dirty = False
-    flush_every = 6  # ~50ms / 8ms
-    actual_updates = 0
+    flush_every = max(1, int(MD_FLUSH_MS / CHUNK_MS))
     t0 = time.perf_counter()
-    for i in range(N):
+    for i in range(n):
         buf += "x"
         dirty = True
         if i % flush_every == 0 and dirty:
-            actual_updates += 1
+            _ = len(buf)
             dirty = False
     if dirty:
-        actual_updates += 1
-    new_ms = (time.perf_counter() - t0) * 1000
+        _ = len(buf)
+    v1_ms = (time.perf_counter() - t0) * 1000
 
-    return old_ms, new_ms
+    # v2: append + dirty flag (flush is Static.update — no parse proxy needed)
+    buf = ""
+    dirty = False
+    t0 = time.perf_counter()
+    for i in range(n):
+        buf += "x"
+        dirty = True
+        if i % flush_every == 0 and dirty:
+            dirty = False   # no parse — just flag reset
+    v2_ms = (time.perf_counter() - t0) * 1000
+
+    return v0_ms, v1_ms, v2_ms
 
 
-# ── Report ────────────────────────────────────────────────────────────
+# ── Report ────────────────────────────────────────────────────────────────────
 
-def fmt_ratio(old: int, new: int) -> str:
-    r = old / max(new, 1)
-    return f"{r:.1f}x"
+def report() -> None:
+    SEP = "─" * 82
+    LABELS = ["Baseline", "Batch 1 (5 fixes)", "Batch 2 (4 new fixes)"]
 
-
-def report(results: list[SimResult]) -> None:
-    SEP = "─" * 72
     print()
-    print("nx01-tui streaming render benchmark")
-    print(f"Chunk rate: {CHUNK_MS:.0f} ms/chunk  │  Markdown flush: 50 ms  │  Scroll flush: 100 ms")
+    print("nx01-tui streaming render benchmark — three-stage comparison")
+    print(f"Params: {CHUNK_MS:.0f} ms/chunk · MD flush {MD_FLUSH_MS:.0f} ms · "
+          f"scroll flush {SCROLL_FLUSH_MS:.0f} ms · paging cap {MAX_MOUNTED_TURNS} turns")
     print()
 
-    for r in results:
-        session_s = r.chunks_total * r.chunk_ms / 1000
+    for label, turns, chunks, tools in SCENARIOS:
+        session_s = turns * chunks * CHUNK_MS / 1000
+        data = simulate(turns, chunks, tools)
+        v0, v1, v2 = data
+
         print(SEP)
-        print(f"Scenario: {r.scenario.upper()}  ({r.turns} turns × {r.chunks_total // r.turns} chunks = {r.chunks_total:,} chunks, {session_s:.0f}s stream)")
+        print(f"Scenario: {label.upper()}  "
+              f"({turns} turns × {chunks} chunks × {tools} tools, {session_s:.0f}s stream)")
         print()
-        print(f"  {'Metric':<30} {'Old':>8}  {'New':>8}  {'Savings':>8}")
-        print(f"  {'─'*30}  {'─'*8}  {'─'*8}  {'─'*8}")
-        print(f"  {'Markdown.update() calls':<30} {r.md_updates_old:>8,}  {r.md_updates_new:>8,}  {fmt_ratio(r.md_updates_old, r.md_updates_new):>8}")
-        print(f"  {'scroll_end() calls':<30} {r.scroll_old:>8,}  {r.scroll_new:>8,}  {fmt_ratio(r.scroll_old, r.scroll_new):>8}")
-        print(f"  {'ThinkingBlock timer fires':<30} {r.thinking_timer_old:>8,}  {r.thinking_timer_new:>8,}  {fmt_ratio(r.thinking_timer_old, r.thinking_timer_new):>8}")
-        print(f"  {'ToolCallBlock timer fires':<30} {r.tool_timer_old:>8,}  {r.tool_timer_new:>8,}  {fmt_ratio(r.tool_timer_old, r.tool_timer_new):>8}")
-        total_old = r.md_updates_old + r.scroll_old + r.thinking_timer_old + r.tool_timer_old
-        total_new = r.md_updates_new + r.scroll_new + r.thinking_timer_new + r.tool_timer_new
-        print(f"  {'─'*30}  {'─'*8}  {'─'*8}  {'─'*8}")
-        print(f"  {'TOTAL DOM writes':<30} {total_old:>8,}  {total_new:>8,}  {fmt_ratio(total_old, total_new):>8}")
+        print(f"  {'Metric':<32} {'Baseline':>10}  {'Batch 1':>10}  {'Batch 2':>10}  {'Total':>8}")
+        print(f"  {'─'*32}  {'─'*10}  {'─'*10}  {'─'*10}  {'─'*8}")
+
+        rows = [
+            ("Markdown parse ops",     "parse_ops"),
+            ("scroll_end() calls",     "scroll"),
+            ("ThinkingBlock timer",    "think_timer"),
+            ("ToolCallBlock timer",    "tool_timer"),
+            ("RichLog writes (tools)", "log_writes"),
+        ]
+        for name, key in rows:
+            print(f"  {name:<32} {_fmt(v0[key])}  {_fmt(v1[key])}  {_fmt(v2[key])}"
+                  f"  {_ratio(v0[key], v2[key])}")
+
+        print(f"  {'─'*32}  {'─'*10}  {'─'*10}  {'─'*10}  {'─'*8}")
+        print(f"  {'TOTAL hot-path ops':<32} {_fmt(v0['total_hot'])}  "
+              f"{_fmt(v1['total_hot'])}  {_fmt(v2['total_hot'])}"
+              f"  {_ratio(v0['total_hot'], v2['total_hot'])}")
+        print()
+        print(f"  {'Peak DOM nodes':<32} {_fmt(v0['dom_nodes'])}  "
+              f"{_fmt(v1['dom_nodes'])}  {_fmt(v2['dom_nodes'])}"
+              f"  {_ratio(v0['dom_nodes'], v2['dom_nodes'])}")
         print()
 
     print(SEP)
-    old_ms, new_ms = measure_append_overhead()
-    print(f"Python-side append overhead (10 000 chunks):")
-    print(f"  Old (update every chunk): {old_ms:.2f} ms")
-    print(f"  New (dirty flag only):    {new_ms:.2f} ms")
+    v0_ms, v1_ms, v2_ms = measure_append_overhead()
+    print(f"Python append overhead (10 000 chunks):")
+    print(f"  Baseline (parse every chunk):  {v0_ms:6.2f} ms")
+    print(f"  Batch 1  (parse every 50ms):   {v1_ms:6.2f} ms")
+    print(f"  Batch 2  (Static, no parse):   {v2_ms:6.2f} ms")
+    print()
+
+    print("Batch 1 fixes: debounce Markdown updates · debounce scroll_end ·")
+    print("               slower ThinkingBlock/ToolCallBlock timers · O(1) activity counters")
+    print("Batch 2 fixes: Static-during-streaming · single RichLog write per chunk ·")
+    print(f"               freeze old turns to Static · paging (max {MAX_MOUNTED_TURNS} turns in DOM)")
     print()
 
 
 if __name__ == "__main__":
-    report(run())
+    report()

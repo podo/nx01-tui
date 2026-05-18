@@ -94,11 +94,9 @@ class ThinkingBlock(Vertical):
             pass
 
     def append_chunk(self, text: str) -> None:
-        if self._log is None:
+        if self._log is None or not text:
             return
-        # Strip trailing newline pieces — RichLog already line-breaks.
-        for line in text.splitlines() or [text]:
-            self._log.write(Text(line, style="dim"))
+        self._log.write(Text(text.rstrip("\n") or text, style="dim"))
 
     def done(self, auto_collapse: bool = True) -> None:
         """Mark thinking complete; auto-collapses by default (V1 behaviour).
