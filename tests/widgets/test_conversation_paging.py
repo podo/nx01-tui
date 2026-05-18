@@ -50,6 +50,7 @@ async def test_assistant_widgets_land_inside_turn_group():
         # Both widgets are children of the TurnGroup, not ConversationView directly
         from nx01_tui.tui.widgets import ThinkingBlock
         from nx01_tui.tui.widgets.messages import AssistantMessage
+
         assert len(list(group.query(ThinkingBlock))) == 1
         assert len(list(group.query(AssistantMessage))) == 1
 
@@ -203,7 +204,6 @@ async def test_freeze_called_on_previous_assistant_at_new_turn():
         conv.append_assistant("response one")
         conv.end_assistant()
         await pilot.pause(0.15)
-        from nx01_tui.tui.widgets.messages import AssistantMessage
         last = conv._last_assistant
         assert last is not None
         # Second turn triggers freeze

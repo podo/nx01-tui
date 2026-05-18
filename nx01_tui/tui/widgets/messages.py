@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from rich.markdown import Markdown as RichMarkdown
-
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Markdown, Static

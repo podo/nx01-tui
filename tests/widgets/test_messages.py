@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Markdown, Static
+from textual.widgets import Markdown
 
 from nx01_tui.tui.widgets.messages import AssistantMessage
 
