@@ -16,6 +16,8 @@ Owns:
 from __future__ import annotations
 
 import asyncio
+import atexit
+import datetime
 import json
 import logging
 import re
@@ -164,9 +166,11 @@ class Nx01App(App):
     async def on_mount(self) -> None:
         domain = urlparse(self.base_url).netloc or self.base_url
         self.query_one(AppHeader).domain = domain
+        atexit.register(self._save_session_state)
         self.run_worker(self._bootstrap(), exclusive=True, name="bootstrap")
 
     async def on_unmount(self) -> None:
+        self._save_session_state()
         await self.client.close()
 
     # ── Bootstrap (flavor discovery → SSE worker) ────────────────────
@@ -878,9 +882,7 @@ class Nx01App(App):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("auto-resume %s failed: %s", flavor, exc)
 
-    async def _auto_resume_flavor(
-        self, flavor: str, session_id: str, quit_ts: float
-    ) -> None:
+    async def _auto_resume_flavor(self, flavor: str, session_id: str, quit_ts: float) -> None:
         try:
             await self.client.resume_session(session_id)
         except Exception as exc:  # noqa: BLE001
@@ -902,10 +904,11 @@ class Nx01App(App):
                 ts = row.get("timestamp") or row.get("created_at") or 0
                 if isinstance(ts, str):
                     try:
-                        from datetime import datetime, timezone
-                        ts = datetime.fromisoformat(
-                            ts.replace("Z", "+00:00")
-                        ).replace(tzinfo=timezone.utc).timestamp()
+                        ts = (
+                            datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            .replace(tzinfo=datetime.UTC)
+                            .timestamp()
+                        )
                     except Exception:  # noqa: BLE001
                         ts = 0
                 if float(ts) > quit_ts:
