@@ -198,6 +198,12 @@ class ConversationView(VerticalScroll):
             self._last_assistant.freeze()
             self._last_assistant = None
 
+    def reset_for_new_session(self) -> None:
+        """Wipe conversation and restore the welcome empty-state hint."""
+        self.reset_for_replay()
+        self._empty_state = _EmptyState(_EMPTY_HINT)
+        self.mount(self._empty_state)
+
     # ── Public API ───────────────────────────────────────────────────
 
     def add_user_message(self, text: str) -> UserMessage:

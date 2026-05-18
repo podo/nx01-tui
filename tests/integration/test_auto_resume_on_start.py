@@ -187,3 +187,37 @@ async def test_save_state_called_on_unmount(tmp_path, monkeypatch):
     assert state_file.exists()
     data = json.loads(state_file.read_text())
     assert data["sessions"]["assistant"]["session_id"] == "sess_ctrl_c"
+
+
+@pytest.mark.asyncio
+async def test_new_session_clears_saved_state(tmp_path, monkeypatch):
+    """action_new_session removes the saved session so next boot starts blank."""
+    state_file = tmp_path / "nx01_tui_state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "sessions": {"assistant": {"session_id": "sess_old", "quit_ts": time.time() - 5}},
+            }
+        )
+    )
+    monkeypatch.setattr(app_module, "_STATE_FILE", state_file)
+
+    tui = Nx01App("http://mock", api_key="t", flavors=["assistant"])
+    _mock_client(tui)
+
+    async with tui.run_test() as pilot:
+        await _settle(tui, pilot)
+        # Simulate new session action.
+        await tui.action_new_session()
+        await pilot.pause(0.1)
+
+        # active_session_id cleared
+        assert tui._active_session_id.get("assistant") is None
+        # conversation is blank
+        conv = tui._panes["assistant"].conversation
+        assert len(conv.query(UserMessage)) == 0
+
+    # State file should not contain the old session
+    data = json.loads(state_file.read_text())
+    assert "assistant" not in data.get("sessions", {})
