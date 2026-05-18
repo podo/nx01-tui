@@ -384,11 +384,15 @@ class Nx01App(App):
             call_id = event.raw.get("call_id", "") or f"{event.tool}-{event.at}"
             tc = state.tool_calls[-1] if state.tool_calls else None
             # If the backend sent a raw call_id as the tool name, use the
-            # human-readable title instead.
+            # human-readable title instead (both for the conv widget and the
+            # state so the sidebar also shows the readable name).
             if _CALL_ID_RE.match(event.tool) and event.title:
                 parts = event.title.split(": ", 1)
                 tool_display = parts[0].strip()
                 args_display = parts[1].strip() if len(parts) > 1 else event.title
+                if tc is not None:
+                    tc.tool = tool_display
+                    tc.args = args_display
             else:
                 tool_display = event.tool
                 args_display = event.title or ""
