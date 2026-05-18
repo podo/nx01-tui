@@ -27,13 +27,21 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from nx01_tui.tui.app import Nx01App, _STATE_FILE  # noqa: E402
+from nx01_tui.tui.app import _STATE_FILE, Nx01App  # noqa: E402
 from nx01_tui.tui.events import parse_event  # noqa: E402
 from nx01_tui.tui.modals.sessions_modal import SessionsModal  # noqa: E402
-from nx01_tui.tui.widgets import AppHeader, ChatInput, MonitorSidebar, ThinkingBlock, ToolCallBlock  # noqa: E402
+from nx01_tui.tui.widgets import (  # noqa: E402
+    AppHeader,
+    ThinkingBlock,
+    ToolCallBlock,
+)
 from nx01_tui.tui.widgets.conversation import UnreadDivider  # noqa: E402
 from nx01_tui.tui.widgets.sidebar import SkillsSection  # noqa: E402
-from tests.fixtures.sample_events import chunk, skill_loaded, thinking, tool_completed, tool_started, turn_done  # noqa: E402
+from tests.fixtures.sample_events import (  # noqa: E402
+    chunk,
+    thinking,
+    turn_done,
+)
 
 ARTIFACTS = ROOT / "artifacts" / "v11-smoke"
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
@@ -225,7 +233,11 @@ async def run() -> Report:
         print(f"  S{n:02d} {status}  {name}")
         if detail:
             print(f"       {detail}")
-        report.add(Step(n=n, name=name, description=description, png_path=png, passed=passed, detail=detail))
+        report.add(
+            Step(  # noqa: E501
+                n=n, name=name, description=description, png_path=png, passed=passed, detail=detail
+            )
+        )
 
     # ─────────────────────────────────────────────────────────────────
     # Scenarios S01–S05: single app boot
@@ -273,13 +285,13 @@ async def run() -> Report:
         png = _screenshot(app, 2, "skills_sidebar")
         step(
             "Skills sidebar — pre-populated on bootstrap",
-            "After bootstrap with API skills, sidebar must show skill names, not 'no skills loaded'.",
+            "After bootstrap with API skills, sidebar must show skill names, not 'no skills loaded'.",  # noqa: E501
             passed=skills_shown and no_empty_msg and state_has_skills,
             png=png,
             detail=(
                 f"children={skills_shown} no_empty={no_empty_msg} "
                 f"state_skills={state_has_skills} "
-                f"loaded={[s['name'] for s in (state_skills.skills_loaded if state_skills else [])]}"
+                f"loaded={[s['name'] for s in (state_skills.skills_loaded if state_skills else [])]}"  # noqa: E501
             ),
         )
 
@@ -309,7 +321,7 @@ async def run() -> Report:
         png = _screenshot(app, 3, "thinking_stays_expanded")
         step(
             "Thinking block — stays expanded after done(), shows ✓ status",
-            "done() must NOT auto-collapse. Block keeps its content visible with an inline status change.",
+            "done() must NOT auto-collapse. Block keeps its content visible with an inline status change.",  # noqa: E501
             passed=is_not_collapsed and is_done_class and has_checkmark,
             png=png,
             detail=(
@@ -405,7 +417,7 @@ async def run() -> Report:
         png = _screenshot(app, 6, "quit_saves_state")
         step(
             "Quit — saves session state to ~/.nx01_tui_state.json",
-            "_save_session_state() must write version=1, session_id, and quit_ts for each active session.",
+            "_save_session_state() must write version=1, session_id, and quit_ts for each active session.",  # noqa: E501
             passed=file_exists and has_version and has_session and has_ts,
             png=png,
             detail=(
