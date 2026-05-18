@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from textual.containers import VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
 
 from .code_block import CodeBlock
@@ -56,6 +56,33 @@ class _EmptyState(Static):
     """
 
 
+MAX_MOUNTED_TURNS = 30
+
+
+class _TurnGroup(Vertical):
+    DEFAULT_CSS = "_TurnGroup { height: auto; }"
+
+
+class _LoadMoreHeader(Static):
+    DEFAULT_CSS = """
+    _LoadMoreHeader {
+        height: 1;
+        text-align: center;
+        color: $text-muted;
+        margin: 1 0;
+    }
+    _LoadMoreHeader:hover { color: $primary; }
+    """
+
+    def __init__(self, count: int, **kwargs: object) -> None:
+        label = f"── {count} older turn{'s' if count != 1 else ''} · click to load ──"
+        super().__init__(f"[dim]{label}[/]", **kwargs)
+
+    def on_click(self, _event: object) -> None:
+        if isinstance(self.parent, ConversationView):
+            self.parent._load_archived_turns()
+
+
 class ConversationView(VerticalScroll):
     DEFAULT_CSS = """
     ConversationView {
@@ -72,10 +99,25 @@ class ConversationView(VerticalScroll):
         self._active_tools: dict[str, ToolCallBlock] = {}
         self._empty_state: _EmptyState | None = None
         self._unread_divider: UnreadDivider | None = None
+        self._scroll_pending: bool = False
+        self._current_group: _TurnGroup | None = None
+        self._mounted_groups: list[_TurnGroup] = []
+        self._archived_groups: list[_TurnGroup] = []
+        self._load_header: _LoadMoreHeader | None = None
+        self._last_assistant: AssistantMessage | None = None
 
     def on_mount(self) -> None:
         self._empty_state = _EmptyState(_EMPTY_HINT)
         self.mount(self._empty_state)
+        self.set_interval(0.1, self._flush_scroll)
+
+    def _request_scroll(self) -> None:
+        self._scroll_pending = True
+
+    def _flush_scroll(self) -> None:
+        if self._scroll_pending:
+            self.scroll_end(animate=False)
+            self._scroll_pending = False
 
     def _clear_empty_state(self) -> None:
         if self._empty_state is not None:
@@ -93,13 +135,77 @@ class ConversationView(VerticalScroll):
         self._active_assistant = None
         self._active_tools = {}
         self._unread_divider = None
+        self._current_group = None
+        self._mounted_groups = []
+        self._archived_groups = []
+        self._load_header = None
+        self._last_assistant = None
+
+    # ── Turn grouping & paging ───────────────────────────────────────
+
+    def _mount_into_turn(self, widget) -> None:
+        """Mount widget into current TurnGroup, or directly if no group started."""
+        if self._current_group is not None:
+            self._current_group.mount(widget)
+        else:
+            self.mount(widget)
+
+    def _start_new_turn(self) -> None:
+        group = _TurnGroup()
+        self._current_group = group
+        self._mounted_groups.append(group)
+        self.mount(group)
+        self._maybe_archive_oldest()
+
+    def _maybe_archive_oldest(self) -> None:
+        if len(self._mounted_groups) > MAX_MOUNTED_TURNS:
+            oldest = self._mounted_groups.pop(0)
+            self._archived_groups.append(oldest)
+            oldest.remove()
+            self._update_load_header()
+
+    def _update_load_header(self) -> None:
+        n = len(self._archived_groups)
+        if n == 0:
+            if self._load_header is not None:
+                self._load_header.remove()
+                self._load_header = None
+            return
+        if self._load_header is None:
+            self._load_header = _LoadMoreHeader(n)
+            self.mount(self._load_header, before=0)
+        else:
+            label = f"── {n} older turn{'s' if n != 1 else ''} · click to load ──"
+            self._load_header.update(f"[dim]{label}[/]")
+
+    def _load_archived_turns(self) -> None:
+        if not self._archived_groups:
+            return
+        anchor = self._mounted_groups[0] if self._mounted_groups else None
+        for group in self._archived_groups:
+            if anchor is not None:
+                self.mount(group, before=anchor)
+            else:
+                self.mount(group)
+            self._mounted_groups.insert(0, group)
+        self._archived_groups = []
+        if self._load_header is not None:
+            self._load_header.remove()
+            self._load_header = None
+
+    def _freeze_last_assistant(self) -> None:
+        if self._last_assistant is not None:
+            self._last_assistant.freeze()
+            self._last_assistant = None
 
     # ── Public API ───────────────────────────────────────────────────
 
     def add_user_message(self, text: str) -> UserMessage:
         self._clear_empty_state()
+        self._freeze_last_assistant()
+        self._start_new_turn()
         widget = UserMessage(text)
-        self.mount(widget)
+        self._mount_into_turn(widget)
         self.scroll_end(animate=False)
         # Reset per-turn references
         self._active_thinking = None
@@ -111,13 +217,13 @@ class ConversationView(VerticalScroll):
         if self._active_thinking is None:
             self._clear_empty_state()
             self._active_thinking = ThinkingBlock()
-            self.mount(self._active_thinking)
+            self._mount_into_turn(self._active_thinking)
         return self._active_thinking
 
     def append_thinking(self, text: str) -> None:
         block = self.start_thinking()
         block.append_chunk(text)
-        self.scroll_end(animate=False)
+        self._request_scroll()
 
     def end_thinking(self, auto_collapse: bool = True) -> None:
         if self._active_thinking is not None:
@@ -142,7 +248,7 @@ class ConversationView(VerticalScroll):
         block = ToolCallBlock(tool=tool, args=args, call_id=call_id)
         if call_id:
             self._active_tools[call_id] = block
-        self.mount(block)
+        self._mount_into_turn(block)
         self.scroll_end(animate=False)
         return block
 
@@ -151,20 +257,20 @@ class ConversationView(VerticalScroll):
 
     def start_skill(self, name: str, size: int = 0) -> SkillBlock:
         block = SkillBlock(skill_name=name, skill_size=size)
-        self.mount(block)
+        self._mount_into_turn(block)
         self.scroll_end(animate=False)
         return block
 
     def start_assistant(self, initial: str = "") -> AssistantMessage:
         if self._active_assistant is None:
             self._active_assistant = AssistantMessage(initial)
-            self.mount(self._active_assistant)
+            self._mount_into_turn(self._active_assistant)
         return self._active_assistant
 
     def append_assistant(self, text: str) -> None:
         msg = self.start_assistant()
         msg.append(text)
-        self.scroll_end(animate=False)
+        self._request_scroll()
 
     def end_assistant(self) -> None:
         if self._active_assistant is None:
@@ -172,6 +278,7 @@ class ConversationView(VerticalScroll):
         msg = self._active_assistant
         msg.finalise()
         self._active_assistant = None
+        self._last_assistant = msg
         # Split fenced code blocks out into clickable CodeBlocks at end-of-turn.
         # The assistant message still renders prose; for each fenced block we
         # also mount a CodeBlock right after for click-to-copy.
@@ -179,7 +286,7 @@ class ConversationView(VerticalScroll):
         for match in _FENCE_RE.finditer(text):
             lang, code = match.group(1) or "text", match.group(2).strip()
             if code:
-                self.mount(CodeBlock(code=code, language=lang))
+                self._mount_into_turn(CodeBlock(code=code, language=lang))
         self.scroll_end(animate=False)
 
     # ── Search bar control ───────────────────────────────────────────

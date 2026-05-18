@@ -119,3 +119,36 @@ async def test_click_on_body_does_not_toggle():
         await pilot.pause(0.05)
         # Body click is inert — still expanded.
         assert block.collapsed is False
+
+
+@pytest.mark.asyncio
+async def test_append_output_single_write_per_call():
+    """append_output() must issue exactly one RichLog.write() per call — change 3."""
+    from unittest.mock import patch
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ToolCallBlock)
+        block.set_status(ToolStatus.ACTIVE)
+        with patch.object(block._log, "write") as mock_write:
+            block.append_output("line1\nline2\nline3\n")
+            assert mock_write.call_count == 1
+
+        with patch.object(block._log, "write") as mock_write:
+            block.append_output("single line")
+            assert mock_write.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_append_output_empty_is_noop():
+    """append_output('') must not call write at all."""
+    from unittest.mock import patch
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ToolCallBlock)
+        with patch.object(block._log, "write") as mock_write:
+            block.append_output("")
+            assert mock_write.call_count == 0

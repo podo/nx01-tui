@@ -120,3 +120,35 @@ async def test_click_on_body_does_not_toggle():
         await pilot.pause(0.05)
         # Still expanded — body click is inert
         assert not block.has_class("collapsed")
+
+
+@pytest.mark.asyncio
+async def test_append_chunk_single_write_per_chunk():
+    """append_chunk() must issue exactly one RichLog.write() per call — change 3."""
+    from unittest.mock import patch
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        with patch.object(block._log, "write") as mock_write:
+            block.append_chunk("multi\nline\nchunk")
+            assert mock_write.call_count == 1
+
+        with patch.object(block._log, "write") as mock_write:
+            block.append_chunk("single token")
+            assert mock_write.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_append_chunk_empty_is_noop():
+    """append_chunk('') must not call write at all."""
+    from unittest.mock import patch
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        with patch.object(block._log, "write") as mock_write:
+            block.append_chunk("")
+            assert mock_write.call_count == 0
