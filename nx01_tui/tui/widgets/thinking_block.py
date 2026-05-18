@@ -96,10 +96,9 @@ class ThinkingBlock(Vertical):
         for line in text.splitlines() or [text]:
             self._log.write(Text(line, style="dim"))
 
-    def done(self, auto_collapse: bool = False) -> None:
-        """Mark thinking complete; update header in-place. Block stays expanded
-        so the user sees the content (opencode-style). Pass auto_collapse=True
-        for replay where we want thinking blocks pre-collapsed.
+    def done(self, auto_collapse: bool = True) -> None:
+        """Mark thinking complete; auto-collapses by default (V1 behaviour).
+        Pass auto_collapse=False to keep expanded for explicit review.
         """
         self.thinking = False
         self._duration_ms = int((time.monotonic() - self._started_at) * 1000)
@@ -116,8 +115,9 @@ class ThinkingBlock(Vertical):
             pass
         seconds = self._duration_ms // 1000
         try:
-            self.query_one("#label", Static).update(f"[$success]✓[/] [dim]Thought — {seconds}s[/]")
-            self.query_one("#hint", Static).update("[dim]click to toggle[/]")
+            label = f"[$success]✓[/] [dim]Thought for {seconds}s[/]"
+            self.query_one("#label", Static).update(label)
+            self.query_one("#hint", Static).update("[dim]click to review[/]")
         except Exception:  # noqa: BLE001
             pass
         self.add_class("done")
