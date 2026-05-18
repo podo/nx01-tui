@@ -1,8 +1,11 @@
 """Bootstrap parallelization: per-flavor API calls run concurrently."""
+
 from __future__ import annotations
 
 import asyncio
+
 import pytest
+
 from nx01_tui.tui.app import Nx01App
 
 

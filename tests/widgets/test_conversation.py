@@ -1,7 +1,9 @@
 """Tests for ConversationView scroll suppression."""
+
 from __future__ import annotations
 
 import pytest
+
 from nx01_tui.tui.app import Nx01App
 
 
@@ -33,7 +35,7 @@ async def test_suppress_scroll_prevents_intermediate_scrolls():
             conv.append_assistant("world")
 
         # No scrolls during suppression
-        assert scroll_calls == [], f"Expected no scrolls during suppression, got {len(scroll_calls)}"
+        assert scroll_calls == [], f"Scrolls during suppression: {len(scroll_calls)}"
 
         # After suppression is released, _maybe_scroll must fire normally
         conv.append_assistant("post-suppression text")

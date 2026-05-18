@@ -1,7 +1,9 @@
 """Replay batching: session restore wraps all mounts in batch_update."""
+
 from __future__ import annotations
 
 import pytest
+
 from nx01_tui.tui.app import Nx01App
 from nx01_tui.tui.widgets import AssistantMessage, UserMessage
 
@@ -23,7 +25,7 @@ async def test_replay_scroll_called_once(monkeypatch):
     async with app.run_test() as pilot:
         await pilot.pause(0.3)
         pane = app._panes.get("assistant")
-        assert pane is not None, "assistant pane not mounted after 0.3s — bootstrap too slow or broken"
+        assert pane is not None, "assistant pane not mounted — bootstrap too slow or broken"
         conv = pane.conversation
         original = conv.scroll_end
 
@@ -49,7 +51,7 @@ async def test_replay_no_scroll_when_scroll_after_false(monkeypatch):
     async with app.run_test() as pilot:
         await pilot.pause(0.3)
         pane = app._panes.get("assistant")
-        assert pane is not None, "assistant pane not mounted after 0.3s — bootstrap too slow or broken"
+        assert pane is not None, "assistant pane not mounted — bootstrap too slow or broken"
         conv = pane.conversation
         original = conv.scroll_end
 
@@ -63,7 +65,8 @@ async def test_replay_no_scroll_when_scroll_after_false(monkeypatch):
         app._replay_messages("assistant", _make_rows(5), scroll_after=False)
         await pilot.pause(0.1)
 
-        assert len(scroll_calls) == 0, f"Expected 0 scrolls with scroll_after=False, got {len(scroll_calls)}"
+        n = len(scroll_calls)
+        assert n == 0, f"Expected 0 scrolls with scroll_after=False, got {n}"
 
 
 @pytest.mark.asyncio
@@ -74,7 +77,7 @@ async def test_replay_content_correct():
     async with app.run_test() as pilot:
         await pilot.pause(0.3)
         pane = app._panes.get("assistant")
-        assert pane is not None, "assistant pane not mounted after 0.3s — bootstrap too slow or broken"
+        assert pane is not None, "assistant pane not mounted — bootstrap too slow or broken"
         conv = pane.conversation
 
         rows = [

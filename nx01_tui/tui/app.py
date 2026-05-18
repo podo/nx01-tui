@@ -22,8 +22,8 @@ import json
 import logging
 import re
 import time
-from contextlib import nullcontext
 from collections import deque
+from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -162,7 +162,7 @@ class Nx01App(App):
         self.query_one(AppHeader).domain = domain
         atexit.register(self._save_session_state)
         self.run_worker(self._bootstrap(), exclusive=True, name="bootstrap")
-        self.set_interval(1 / 60, self._drain_events)   # 60fps drain
+        self.set_interval(1 / 60, self._drain_events)  # 60fps drain
 
     async def on_unmount(self) -> None:
         self._save_session_state()
@@ -262,7 +262,7 @@ class Nx01App(App):
             return_exceptions=True,
         )
 
-        for fl, result in zip(flavors, results):
+        for fl, result in zip(flavors, results, strict=True):
             if isinstance(result, Exception):
                 logger.warning("slash dropdown: fetch failed for %s: %s", fl, result)
                 skills, tools = [], []
@@ -292,9 +292,7 @@ class Nx01App(App):
         try:
             tools_resp = await self.client.get_tools(flavor)
             tools = (
-                tools_resp.get("tools", [])
-                if isinstance(tools_resp, dict)
-                else (tools_resp or [])
+                tools_resp.get("tools", []) if isinstance(tools_resp, dict) else (tools_resp or [])
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("slash dropdown: get_tools(%s) failed: %s", flavor, exc)

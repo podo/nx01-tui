@@ -1,7 +1,9 @@
 """SSE micro-batching: events accumulate in queue, drained per 60fps frame."""
+
 from __future__ import annotations
 
 import pytest
+
 from nx01_tui.tui.app import Nx01App
 from nx01_tui.tui.events import AgentChunkEvent
 
@@ -14,6 +16,7 @@ async def test_sse_event_queue_exists():
         await pilot.pause(0.2)
         assert hasattr(app, "_event_queue"), "_event_queue not found on app"
         import asyncio
+
         assert isinstance(app._event_queue, asyncio.Queue)
 
 
@@ -36,6 +39,7 @@ async def test_sse_events_accumulate_then_drain():
 
         # Verify the event was actually dispatched (not silently lost)
         from nx01_tui.tui.state import AgentState
+
         assert app._states["assistant"].state == AgentState.STREAMING
 
 
