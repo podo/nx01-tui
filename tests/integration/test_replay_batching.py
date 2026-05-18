@@ -16,7 +16,7 @@ def _make_rows(n: int = 20) -> list[dict]:
 
 @pytest.mark.asyncio
 async def test_replay_scroll_called_once(monkeypatch):
-    """scroll_end called ≤1 time after replaying 20 user+assistant pairs."""
+    """scroll_end called exactly 1 time after replaying 20 user+assistant pairs."""
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     scroll_calls: list[int] = []
 
@@ -37,7 +37,33 @@ async def test_replay_scroll_called_once(monkeypatch):
         app._replay_messages("assistant", _make_rows(20))
         await pilot.pause(0.1)
 
-        assert len(scroll_calls) <= 1, f"Expected ≤1 scroll, got {len(scroll_calls)}"
+        assert len(scroll_calls) == 1, f"Expected exactly 1 scroll, got {len(scroll_calls)}"
+
+
+@pytest.mark.asyncio
+async def test_replay_no_scroll_when_scroll_after_false(monkeypatch):
+    """scroll_after=False means _replay_messages produces zero scroll_end calls."""
+    app = Nx01App("http://localhost:9999", flavors=["assistant"])
+    scroll_calls: list[int] = []
+
+    async with app.run_test() as pilot:
+        await pilot.pause(0.3)
+        pane = app._panes.get("assistant")
+        assert pane is not None, "assistant pane not mounted after 0.3s — bootstrap too slow or broken"
+        conv = pane.conversation
+        original = conv.scroll_end
+
+        def track(**kw):
+            scroll_calls.append(1)
+            return original(**kw)
+
+        conv.scroll_end = track  # type: ignore[method-assign]
+        scroll_calls.clear()
+
+        app._replay_messages("assistant", _make_rows(5), scroll_after=False)
+        await pilot.pause(0.1)
+
+        assert len(scroll_calls) == 0, f"Expected 0 scrolls with scroll_after=False, got {len(scroll_calls)}"
 
 
 @pytest.mark.asyncio
