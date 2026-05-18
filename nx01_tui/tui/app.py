@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import time
+from contextlib import nullcontext
 from collections import deque
 from pathlib import Path
 from urllib.parse import urlparse
@@ -75,14 +76,6 @@ logger = logging.getLogger(__name__)
 
 _STATE_FILE = Path.home() / ".nx01_tui_state.json"
 _CALL_ID_RE = re.compile(r"^tc-[a-f0-9]{8,}$")
-
-
-class SseMessage(Message):
-    """Wraps an SseEvent for main-thread dispatch via post_message."""
-
-    def __init__(self, event: SseEvent) -> None:
-        super().__init__()
-        self.event = event
 
 
 class ConnectionStatusMessage(Message):
@@ -155,6 +148,7 @@ class Nx01App(App):
         # Rolling SSE event log — fed to DebugModal on demand.
         self._debug_buffer: deque[SseEvent] = deque(maxlen=500)
         self._debug_modal: DebugModal | None = None
+        self._event_queue: asyncio.Queue[SseEvent] = asyncio.Queue()
 
     # ── Composition ──────────────────────────────────────────────────
 
@@ -168,6 +162,7 @@ class Nx01App(App):
         self.query_one(AppHeader).domain = domain
         atexit.register(self._save_session_state)
         self.run_worker(self._bootstrap(), exclusive=True, name="bootstrap")
+        self.set_interval(1 / 60, self._drain_events)   # 60fps drain
 
     async def on_unmount(self) -> None:
         self._save_session_state()
@@ -319,7 +314,7 @@ class Nx01App(App):
         try:
             async for kind, payload in stream_with_backoff(self.client):
                 if kind == "event":
-                    self.post_message(SseMessage(payload))
+                    self._event_queue.put_nowait(payload)
                 elif kind == "disconnect":
                     self.post_message(ConnectionStatusMessage("disconnected", payload))
                 elif kind == "reconnecting":
@@ -333,12 +328,6 @@ class Nx01App(App):
             self.post_message(ConnectionStatusMessage("disconnected", exc))
 
     # ── Message dispatch ─────────────────────────────────────────────
-
-    def on_sse_message(self, message: SseMessage) -> None:
-        self._debug_buffer.append(message.event)
-        if self._debug_modal is not None:
-            self._debug_modal.push(message.event)
-        self._dispatch_event(message.event)
 
     def on_connection_status_message(self, message: ConnectionStatusMessage) -> None:
         hdr = self.query_one(AppHeader)
@@ -358,6 +347,26 @@ class Nx01App(App):
             self.notify(
                 f"Reconnecting… (attempt {message.detail})", severity="information", timeout=2
             )
+
+    async def _drain_events(self) -> None:
+        """Drain SSE event queue once per 60fps frame — single layout pass per drain."""
+        if self._event_queue.empty():
+            return
+        flavor = self._active_flavor()
+        pane = self._panes.get(flavor)
+        conv = pane.conversation if pane else None
+
+        ctx = conv.suppress_scroll() if conv is not None else nullcontext()
+        with self.batch_update(), ctx:
+            while not self._event_queue.empty():
+                event = self._event_queue.get_nowait()
+                self._debug_buffer.append(event)
+                if self._debug_modal is not None:
+                    self._debug_modal.push(event)
+                self._dispatch_event(event)
+
+        if conv is not None:
+            conv.scroll_end(animate=False)
 
     def _dispatch_event(self, event: SseEvent) -> None:
         flavor = event.flavor or self._active_flavor()
