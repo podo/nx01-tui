@@ -385,7 +385,14 @@ class Nx01App(App):
             conv.end_assistant()
             self.run_worker(self._refresh_skills_for_flavor(flavor), exclusive=False)
         elif isinstance(event, ToolCallEvent):
-            call_id = event.raw.get("call_id", "") or f"{event.tool}-{event.at}"
+            raw_cid = event.raw.get("call_id", "")
+            if raw_cid:
+                call_id = raw_cid
+            elif _CALL_ID_RE.match(event.tool):
+                # Completion event: backend sends tool=call_id with no call_id field.
+                call_id = event.tool
+            else:
+                call_id = f"{event.tool}-{event.at}"
             tc = state.tool_calls[-1] if state.tool_calls else None
             # If the backend sent a raw call_id as the tool name, use the
             # human-readable title instead (both for the conv widget and the
@@ -400,13 +407,14 @@ class Nx01App(App):
             else:
                 tool_display = event.tool
                 args_display = event.title or ""
-            block = conv.get_tool(call_id) or conv.start_tool(
-                tool_display, args=args_display, call_id=call_id
-            )
-            if tc is not None:
-                block.set_status(tc.status)
-            if event.output:
-                block.append_output(event.output)
+            block = conv.get_tool(call_id)
+            if block is None and not _CALL_ID_RE.match(event.tool):
+                block = conv.start_tool(tool_display, args=args_display, call_id=call_id)
+            if block is not None:
+                if tc is not None:
+                    block.set_status(tc.status)
+                if event.output:
+                    block.append_output(event.output)
         elif isinstance(event, SkillLoadedEvent):
             conv.start_skill(event.skill_name, event.skill_size)
         elif isinstance(event, FlavorStatusEvent):

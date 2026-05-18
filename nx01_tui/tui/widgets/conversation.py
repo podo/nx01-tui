@@ -119,7 +119,7 @@ class ConversationView(VerticalScroll):
         block.append_chunk(text)
         self.scroll_end(animate=False)
 
-    def end_thinking(self, auto_collapse: bool = False) -> None:
+    def end_thinking(self, auto_collapse: bool = True) -> None:
         if self._active_thinking is not None:
             self._active_thinking.done(auto_collapse=auto_collapse)
             self._active_thinking = None
