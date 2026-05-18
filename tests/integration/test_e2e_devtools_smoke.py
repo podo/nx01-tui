@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from nx01_tui.tui.app import ConnectionStatusMessage, Nx01App, SseMessage
+from nx01_tui.tui.app import ConnectionStatusMessage, Nx01App
 from nx01_tui.tui.events import parse_event
 from nx01_tui.tui.modals import (
     CommandModal,
@@ -159,9 +159,9 @@ async def test_memory_modal_degrades_gracefully(app_with_pilot, monkeypatch):
 @pytest.mark.asyncio
 async def test_debug_modal_opens_and_receives_live_events(app_with_pilot):
     app, pilot = app_with_pilot
-    # Pump events through the SseMessage path so they land in _debug_buffer.
+    # Pump events through the queue path so they land in _debug_buffer.
     for raw in [thinking(), turn_done()]:
-        app.post_message(SseMessage(parse_event(raw)))
+        app._event_queue.put_nowait(parse_event(raw))
     await pilot.pause(0.2)
     app.action_open_debug()
     await pilot.pause(0.3)

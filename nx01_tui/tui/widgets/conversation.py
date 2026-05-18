@@ -12,6 +12,8 @@ Provides a small API the App layer uses without poking at internals:
 from __future__ import annotations
 
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
 
 from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
@@ -100,11 +102,21 @@ class ConversationView(VerticalScroll):
         self._empty_state: _EmptyState | None = None
         self._unread_divider: UnreadDivider | None = None
         self._scroll_pending: bool = False
+        self._scroll_suppress_depth: int = 0
         self._current_group: _TurnGroup | None = None
         self._mounted_groups: list[_TurnGroup] = []
         self._archived_groups: list[_TurnGroup] = []
         self._load_header: _LoadMoreHeader | None = None
         self._last_assistant: AssistantMessage | None = None
+
+    @contextmanager
+    def suppress_scroll(self) -> Generator[None, None, None]:
+        """Suppress scroll_end calls during batch operations. Re-entrant safe."""
+        self._scroll_suppress_depth += 1
+        try:
+            yield
+        finally:
+            self._scroll_suppress_depth -= 1
 
     def on_mount(self) -> None:
         self._empty_state = _EmptyState(_EMPTY_HINT)
@@ -112,7 +124,8 @@ class ConversationView(VerticalScroll):
         self.set_interval(0.1, self._flush_scroll)
 
     def _request_scroll(self) -> None:
-        self._scroll_pending = True
+        if self._scroll_suppress_depth == 0:
+            self._scroll_pending = True
 
     def _flush_scroll(self) -> None:
         if self._scroll_pending:
@@ -212,7 +225,7 @@ class ConversationView(VerticalScroll):
         self._start_new_turn()
         widget = UserMessage(text)
         self._mount_into_turn(widget)
-        self.scroll_end(animate=False)
+        self._request_scroll()
         # Reset per-turn references
         self._active_thinking = None
         self._active_assistant = None
@@ -255,7 +268,7 @@ class ConversationView(VerticalScroll):
         if call_id:
             self._active_tools[call_id] = block
         self._mount_into_turn(block)
-        self.scroll_end(animate=False)
+        self._request_scroll()
         return block
 
     def get_tool(self, call_id: str) -> ToolCallBlock | None:
@@ -264,7 +277,7 @@ class ConversationView(VerticalScroll):
     def start_skill(self, name: str, size: int = 0) -> SkillBlock:
         block = SkillBlock(skill_name=name, skill_size=size)
         self._mount_into_turn(block)
-        self.scroll_end(animate=False)
+        self._request_scroll()
         return block
 
     def start_assistant(self, initial: str = "") -> AssistantMessage:
@@ -293,7 +306,7 @@ class ConversationView(VerticalScroll):
             lang, code = match.group(1) or "text", match.group(2).strip()
             if code:
                 self._mount_into_turn(CodeBlock(code=code, language=lang))
-        self.scroll_end(animate=False)
+        self._request_scroll()
 
     # ── Search bar control ───────────────────────────────────────────
 
