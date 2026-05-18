@@ -16,6 +16,7 @@ Owns:
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
 import logging
 import re
@@ -164,9 +165,11 @@ class Nx01App(App):
     async def on_mount(self) -> None:
         domain = urlparse(self.base_url).netloc or self.base_url
         self.query_one(AppHeader).domain = domain
+        atexit.register(self._save_session_state)
         self.run_worker(self._bootstrap(), exclusive=True, name="bootstrap")
 
     async def on_unmount(self) -> None:
+        self._save_session_state()
         await self.client.close()
 
     # ── Bootstrap (flavor discovery → SSE worker) ────────────────────
