@@ -786,6 +786,10 @@ class Nx01App(App):
         if chosen:
             self.query_one(AppHeader).model = chosen
             self.notify(f"Model: {chosen}")
+            # Keep per-flavor state in sync so tab-switch doesn't clobber this choice.
+            flavor = self._active_flavor()
+            if flavor and flavor in self._states:
+                self._states[flavor].model = chosen
 
     async def action_new_session(self) -> None:
         flavor = self._active_flavor()
