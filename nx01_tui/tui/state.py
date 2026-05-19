@@ -72,6 +72,7 @@ class FlavorState:
     tool_calls: list[ToolCall] = field(default_factory=list)
     last_turn_tools: list[ToolCall] = field(default_factory=list)
     skills_loaded: list[dict[str, Any]] = field(default_factory=list)
+    mcp_servers: list[dict[str, Any]] = field(default_factory=list)
     token_usage: dict[str, int] = field(
         default_factory=lambda: {"input": 0, "output": 0, "total": 0}
     )

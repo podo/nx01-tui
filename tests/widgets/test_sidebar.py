@@ -7,6 +7,7 @@ from textual.app import App, ComposeResult
 
 from nx01_tui.tui.state import FlavorState
 from nx01_tui.tui.widgets import MonitorSidebar
+from nx01_tui.tui.widgets.sidebar import McpSection
 
 
 class _Host(App):
@@ -77,3 +78,65 @@ async def test_responsive_width_scales_with_terminal():
         # Below 130 — hidden entirely.
         sb.apply_terminal_width(110)
         assert sb.has_class("hidden")
+
+
+@pytest.mark.asyncio
+async def test_mcp_section_renders_server_rows():
+    """McpSection.update_servers() renders one row per server."""
+
+    class _McpHost(App):
+        def compose(self) -> ComposeResult:
+            yield McpSection()
+
+    servers = [
+        {"name": "github", "status": "connected", "tools": []},
+        {"name": "slack", "status": "error", "tools": []},
+    ]
+    app = _McpHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        mcp = app.query_one(McpSection)
+        mcp.update_servers(servers)
+        await pilot.pause(0.05)
+        rows = mcp.query_one("#mcp-list").children
+        assert len(list(rows)) == 2
+
+
+@pytest.mark.asyncio
+async def test_mcp_section_shows_none_when_empty():
+    """McpSection.update_servers([]) renders the 'none' placeholder."""
+
+    class _McpHost(App):
+        def compose(self) -> ComposeResult:
+            yield McpSection()
+
+    app = _McpHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        mcp = app.query_one(McpSection)
+        mcp.update_servers([])
+        await pilot.pause(0.05)
+        rows = mcp.query_one("#mcp-list").children
+        # Should be the "[dim]none[/]" placeholder Static
+        assert len(list(rows)) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_from_calls_mcp_section():
+    """MonitorSidebar.update_from() passes mcp_servers to McpSection."""
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield MonitorSidebar(flavor="assistant")
+
+    state = FlavorState(name="assistant")
+    state.mcp_servers = [{"name": "github", "status": "connected", "tools": []}]
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        sb = app.query_one(MonitorSidebar)
+        sb.update_from(state)
+        await pilot.pause(0.05)
+        rows = sb.query_one(McpSection).query_one("#mcp-list").children
+        assert len(list(rows)) == 1

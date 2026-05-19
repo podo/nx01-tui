@@ -227,6 +227,14 @@ class Nx01App(App):
             if isinstance(m, str) and m and name in self._states:
                 self._states[name].model = m
 
+            # Best-effort MCP server status fetch at startup
+            try:
+                servers = await self.client.get_mcp_servers(name)
+                if name in self._states:
+                    self._states[name].mcp_servers = servers
+            except Exception:  # noqa: BLE001
+                pass
+
         # Auto-focus the active flavor's input so the user can type immediately.
         self._focus_active_input()
 

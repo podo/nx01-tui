@@ -327,6 +327,10 @@ class MonitorSidebar(Vertical):
         except Exception:  # noqa: BLE001
             pass
         try:
+            self.query_one(McpSection).update_servers(state.mcp_servers)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             self.query_one(ContextSection).tokens = state.token_usage.get("total", 0)
         except Exception:  # noqa: BLE001
             pass
