@@ -75,3 +75,32 @@ async def test_status_bar_state_transitions():
         bar.state = AgentState.DONE
         await pilot.pause(0.05)
         # No crash on any state transition.
+
+
+def test_pick_first_model_finds_string_model():
+    from nx01_tui.tui.app import Nx01App
+
+    snapshot = {"assistant": {"status": "running", "model": "claude-opus-4-5"}}
+    assert Nx01App._pick_first_model(snapshot) == "claude-opus-4-5"
+
+
+def test_pick_first_model_skips_non_string():
+    from nx01_tui.tui.app import Nx01App
+
+    # model as a dict (wrong format) should be skipped
+    snapshot = {"assistant": {"status": "running", "model": {"default": "opus"}}}
+    assert Nx01App._pick_first_model(snapshot) == ""
+
+
+def test_flavor_state_has_model_field():
+    from nx01_tui.tui.state import FlavorState
+
+    s = FlavorState(name="assistant", model="claude-opus-4-5")
+    assert s.model == "claude-opus-4-5"
+
+
+def test_flavor_state_model_defaults_empty():
+    from nx01_tui.tui.state import FlavorState
+
+    s = FlavorState(name="assistant")
+    assert s.model == ""

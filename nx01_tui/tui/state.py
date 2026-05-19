@@ -61,6 +61,7 @@ class FlavorState:
     """All in-memory state for a single flavor tab."""
 
     name: str
+    model: str = ""
     state: AgentState = AgentState.IDLE
     status: str = "idle"  # backend FlavorStatusEvent
     messages: list[dict[str, Any]] = field(default_factory=list)

@@ -21,6 +21,7 @@ import logging
 import re
 import time
 from collections import deque
+from datetime import UTC
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -173,6 +174,7 @@ class Nx01App(App):
 
     async def _bootstrap(self) -> None:
         flavors: list[str] = list(self._initial_flavors)
+        snapshot: object = None
         try:
             snapshot = await self.client.get_flavors()
             if isinstance(snapshot, dict):
@@ -212,6 +214,18 @@ class Nx01App(App):
 
         for name in flavors:
             self._ensure_flavor(name)
+            # Set model from snapshot so header reflects the active flavor's model
+            if isinstance(snapshot, dict):
+                flavor_data = snapshot.get(name, {})
+            elif isinstance(snapshot, list):
+                flavor_data = next(
+                    (f for f in snapshot if isinstance(f, dict) and f.get("name") == name), {}
+                )
+            else:
+                flavor_data = {}
+            m = flavor_data.get("model", "")
+            if isinstance(m, str) and m and name in self._states:
+                self._states[name].model = m
 
         # Auto-focus the active flavor's input so the user can type immediately.
         self._focus_active_input()
@@ -878,9 +892,7 @@ class Nx01App(App):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("auto-resume %s failed: %s", flavor, exc)
 
-    async def _auto_resume_flavor(
-        self, flavor: str, session_id: str, quit_ts: float
-    ) -> None:
+    async def _auto_resume_flavor(self, flavor: str, session_id: str, quit_ts: float) -> None:
         try:
             await self.client.resume_session(session_id)
         except Exception as exc:  # noqa: BLE001
@@ -902,10 +914,13 @@ class Nx01App(App):
                 ts = row.get("timestamp") or row.get("created_at") or 0
                 if isinstance(ts, str):
                     try:
-                        from datetime import datetime, timezone
-                        ts = datetime.fromisoformat(
-                            ts.replace("Z", "+00:00")
-                        ).replace(tzinfo=timezone.utc).timestamp()
+                        from datetime import datetime
+
+                        ts = (
+                            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            .replace(tzinfo=UTC)
+                            .timestamp()
+                        )
                     except Exception:  # noqa: BLE001
                         ts = 0
                 if float(ts) > quit_ts:
@@ -1005,6 +1020,13 @@ class Nx01App(App):
         if flavor and flavor in self._states:
             self._refresh_status_bar(self._states[flavor])
             self._focus_active_input()
+            # Update header model to reflect newly-active flavor
+            m = self._states[flavor].model
+            if m:
+                try:
+                    self.query_one(AppHeader).model = m
+                except Exception:  # noqa: BLE001 — pre-mount safety
+                    pass
 
     # ── Responsive ───────────────────────────────────────────────────
 
