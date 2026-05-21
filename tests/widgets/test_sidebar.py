@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from textual.app import App, ComposeResult
+from textual.widgets import Static
 
 from nx01_tui.tui.state import FlavorState
 from nx01_tui.tui.widgets import MonitorSidebar
@@ -119,6 +120,43 @@ async def test_mcp_section_shows_none_when_empty():
         rows = mcp.query_one("#mcp-list").children
         # Should be the "[dim]none[/]" placeholder Static
         assert len(list(rows)) == 1
+
+
+@pytest.mark.asyncio
+async def test_memory_section_has_mem0_row():
+    """MemorySection renders a mem0 status row by default showing 'off'."""
+    from nx01_tui.tui.widgets.sidebar import MemorySection
+
+    class _MemHost(App):
+        def compose(self) -> ComposeResult:
+            yield MemorySection()
+
+    app = _MemHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        mem = app.query_one(MemorySection)
+        row = mem.query_one("#mem0-row", Static)
+        assert row is not None
+        assert "off" in str(row.content).lower()
+
+
+@pytest.mark.asyncio
+async def test_memory_section_set_mem0_status():
+    """set_mem0_status() updates the mem0 row text."""
+    from nx01_tui.tui.widgets.sidebar import MemorySection
+
+    class _MemHost(App):
+        def compose(self) -> ComposeResult:
+            yield MemorySection()
+
+    app = _MemHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        mem = app.query_one(MemorySection)
+        mem.set_mem0_status("active")
+        await pilot.pause(0.05)
+        row = mem.query_one("#mem0-row", Static)
+        assert "active" in str(row.content).lower()
 
 
 @pytest.mark.asyncio

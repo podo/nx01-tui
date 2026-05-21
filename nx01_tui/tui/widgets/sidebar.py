@@ -93,6 +93,7 @@ class MemorySection(_Section):
     MemorySection Bar > .bar--bar { color: $success; }
     MemorySection .row { height: 1; }
     MemorySection .label-row { color: $text-muted; }
+    MemorySection #mem0-row { color: $text-muted; height: 1; }
     """
 
     AGENT_LIMIT = 2200
@@ -116,6 +117,7 @@ class MemorySection(_Section):
         yield ProgressBar(
             total=self.USER_LIMIT, show_eta=False, show_percentage=False, id="user-bar"
         )
+        yield Static("[dim]mem0[/]  off", id="mem0-row")
 
     def _label(self, name: str, used: int, limit: int) -> str:
         pct = (used / limit) * 100 if limit else 0
@@ -143,6 +145,14 @@ class MemorySection(_Section):
             self.query_one("#user-label", Static).update(
                 self._label("user", value, self.USER_LIMIT)
             )
+        except Exception:  # noqa: BLE001
+            pass
+
+    def set_mem0_status(self, status: str) -> None:
+        """Update the mem0 row. Call with 'active' when ADR 0012 ships."""
+        try:
+            color = "$success" if status == "active" else "$text-muted"
+            self.query_one("#mem0-row", Static).update(f"[{color}]mem0[/]  {status}")
         except Exception:  # noqa: BLE001
             pass
 
