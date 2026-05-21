@@ -314,6 +314,58 @@ class SessionSection(_Section):
             pass
 
 
+# ── Session Health ─────────────────────────────────────────────────────
+
+
+class SessionHealthSection(_Section):
+    """Top-of-sidebar health card: agent state, message count, session ID."""
+
+    DEFAULT_CSS = """
+    SessionHealthSection { border-bottom: solid $panel; padding-bottom: 1; }
+    SessionHealthSection .health-row { height: 1; }
+    """
+
+    _STATE_ICONS: dict[str, str] = {
+        "idle": "○",
+        "thinking": "◌",
+        "streaming": "◎",
+        "tool_call": "◉",
+        "done": "●",
+        "error": "✗",
+    }
+
+    _STATE_COLORS: dict[str, str] = {
+        "idle": "$text-muted",
+        "thinking": "$warning",
+        "streaming": "$accent",
+        "tool_call": "$success",
+        "done": "$success",
+        "error": "$error",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(title="Health")
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield Static("○ idle", classes="health-row", id="health-state")
+        yield Static("[dim]msgs[/]  0", classes="health-row", id="health-msgs")
+        yield Static("[dim]sess[/]  —", classes="health-row", id="health-sess")
+
+    def update_from(self, state: FlavorState) -> None:
+        state_name = state.state.value if hasattr(state.state, "value") else str(state.state)
+        icon = self._STATE_ICONS.get(state_name, "?")
+        color = self._STATE_COLORS.get(state_name, "$text-muted")
+        sess = state.session_id
+        sess_short = (sess[:8] + "…") if len(sess) > 8 else (sess or "—")
+        try:
+            self.query_one("#health-state", Static).update(f"[{color}]{icon} {state_name}[/]")
+            self.query_one("#health-msgs", Static).update(f"[dim]msgs[/]  {len(state.messages)}")
+            self.query_one("#health-sess", Static).update(f"[dim]sess[/]  {sess_short}")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 # ── Sidebar container ──────────────────────────────────────────────────
 
 
@@ -336,6 +388,7 @@ class MonitorSidebar(Vertical):
         self.flavor = flavor
 
     def compose(self) -> ComposeResult:
+        yield SessionHealthSection()
         yield ActivitySection()
         yield MemorySection()
         yield SkillsSection()
@@ -347,6 +400,10 @@ class MonitorSidebar(Vertical):
 
     def update_from(self, state: FlavorState) -> None:
         """Sync the entire sidebar from a FlavorState snapshot."""
+        try:
+            self.query_one(SessionHealthSection).update_from(state)
+        except Exception:  # noqa: BLE001
+            pass
         try:
             self.query_one(ActivitySection).update_from(state)
         except Exception:  # noqa: BLE001

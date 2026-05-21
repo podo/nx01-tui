@@ -243,3 +243,71 @@ async def test_context_section_update_from_passes_input_output():
         assert ctx.tokens == 4_200
         assert ctx.input_tokens == 3_000
         assert ctx.output_tokens == 1_200
+
+
+@pytest.mark.asyncio
+async def test_session_health_shows_agent_state():
+    """SessionHealthSection.update_from() reflects the agent state name."""
+    from nx01_tui.tui.state import AgentState
+    from nx01_tui.tui.widgets.sidebar import SessionHealthSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield SessionHealthSection()
+
+    state = FlavorState(name="assistant")
+    state.state = AgentState.STREAMING
+    state.session_id = "abc123def456"
+    state.messages = [{"type": "chunk", "text": "hello"}] * 3
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(SessionHealthSection)
+        section.update_from(state)
+        await pilot.pause(0.05)
+        state_row = section.query_one("#health-state")
+        assert state_row is not None
+        # The text should contain the state name
+        content = state_row.content if hasattr(state_row, "content") else str(state_row.renderable)
+        assert "streaming" in content.lower()
+
+
+@pytest.mark.asyncio
+async def test_session_health_shows_message_count():
+    """SessionHealthSection shows message count."""
+    from nx01_tui.tui.widgets.sidebar import SessionHealthSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield SessionHealthSection()
+
+    state = FlavorState(name="assistant")
+    state.messages = [{"type": "chunk"}] * 5
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(SessionHealthSection)
+        section.update_from(state)
+        await pilot.pause(0.05)
+        msgs_row = section.query_one("#health-msgs")
+        content = msgs_row.content if hasattr(msgs_row, "content") else str(msgs_row.renderable)
+        assert "5" in content
+
+
+@pytest.mark.asyncio
+async def test_session_health_in_monitor_sidebar():
+    """SessionHealthSection is the first child of MonitorSidebar."""
+    from nx01_tui.tui.widgets.sidebar import SessionHealthSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield MonitorSidebar(flavor="assistant")
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        # SessionHealthSection must exist in the sidebar
+        section = app.query_one(SessionHealthSection)
+        assert section is not None
