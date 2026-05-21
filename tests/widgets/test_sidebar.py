@@ -381,3 +381,78 @@ async def test_bg_tasks_in_monitor_sidebar():
         await pilot.pause(0.05)
         section = app.query_one(BackgroundTasksSection)
         assert section is not None
+
+
+@pytest.mark.asyncio
+async def test_skills_section_groups_by_category():
+    """SkillsSection groups skills by path prefix."""
+    from nx01_tui.tui.widgets.sidebar import SkillsSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield SkillsSection()
+
+    state = FlavorState(name="assistant")
+    state.skills_loaded = [
+        {"name": "ci-setup", "size": 1024, "path": "devops/ci-setup"},
+        {"name": "deploy", "size": 2048, "path": "devops/deploy"},
+        {"name": "test-runner", "size": 512, "path": "testing/test-runner"},
+    ]
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(SkillsSection)
+        section.update_from(state)
+        await pilot.pause(0.05)
+        container = section.query_one("#skills-list")
+        children = list(container.children)
+        # Should have 2 group headers + 3 skill rows = 5 children
+        assert len(children) == 5
+        # Combined text should contain both category names
+        all_text = " ".join(
+            (c.content if hasattr(c, "content") else str(c.renderable)) for c in children
+        )
+        assert "devops" in all_text.lower()
+        assert "testing" in all_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_skills_section_flat_skill_no_path():
+    """Skills without a path are grouped under the skill name itself."""
+    from nx01_tui.tui.widgets.sidebar import SkillsSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield SkillsSection()
+
+    state = FlavorState(name="assistant")
+    state.skills_loaded = [
+        {"name": "plain-skill", "size": 100},  # no path field
+    ]
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(SkillsSection)
+        section.update_from(state)
+        await pilot.pause(0.05)
+        container = section.query_one("#skills-list")
+        children = list(container.children)
+        # 1 group header + 1 skill row = 2 children
+        assert len(children) == 2
+
+
+def test_preload_skills_preserves_path():
+    """preload_skills() stores path from API dict."""
+    from nx01_tui.tui.state import FlavorState
+
+    state = FlavorState(name="assistant")
+    state.preload_skills(
+        [
+            {"name": "ci-setup", "path": "devops/ci-setup", "size": 1024},
+            {"name": "deploy", "path": "devops/deploy", "size": 2048},
+        ]
+    )
+    assert state.skills_loaded[0]["path"] == "devops/ci-setup"
+    assert state.skills_loaded[1]["path"] == "devops/deploy"

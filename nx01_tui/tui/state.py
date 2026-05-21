@@ -142,8 +142,9 @@ class FlavorState:
         for skill in skills:
             name = skill.get("name", "")
             size = int(skill.get("size") or 0)
+            path = skill.get("path") or name
             if name and not any(s["name"] == name for s in self.skills_loaded):
-                self.skills_loaded.append({"name": name, "size": size})
+                self.skills_loaded.append({"name": name, "size": size, "path": path})
 
     def seal_turn(self, stop_reason: str = "", token_usage: dict[str, int] | None = None) -> None:
         self.seal_thinking()

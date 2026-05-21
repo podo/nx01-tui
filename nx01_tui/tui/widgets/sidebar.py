@@ -201,7 +201,8 @@ class MemorySection(_Section):
 
 class SkillsSection(_Section):
     DEFAULT_CSS = """
-    SkillsSection #skills-list { height: auto; max-height: 6; }
+    SkillsSection #skills-list { height: auto; max-height: 8; }
+    SkillsSection .group-header { color: $text-muted; text-style: italic; height: 1; }
     """
 
     def __init__(self) -> None:
@@ -212,6 +213,8 @@ class SkillsSection(_Section):
         yield Vertical(id="skills-list")
 
     def update_from(self, state: FlavorState) -> None:
+        from collections import defaultdict
+
         try:
             container = self.query_one("#skills-list", Vertical)
         except Exception:  # noqa: BLE001
@@ -220,10 +223,20 @@ class SkillsSection(_Section):
         if not state.skills_loaded:
             container.mount(Static("[dim]no skills loaded[/]"))
             return
-        for skill in state.skills_loaded[-6:]:
-            kb = skill.get("size", 0) / 1024
-            size_str = f"  [dim]{kb:.1f}kb[/]" if skill.get("size") else ""
-            container.mount(Static(f"[$accent]◆[/] [bold]{skill['name']}[/]{size_str}"))
+
+        # Group by path prefix (directory above skill name)
+        groups: dict[str, list[dict]] = defaultdict(list)
+        for skill in state.skills_loaded[-12:]:
+            path = skill.get("path") or skill["name"]
+            category = path.split("/")[0] if "/" in path else skill["name"]
+            groups[category].append(skill)
+
+        for category, skills in sorted(groups.items()):
+            container.mount(Static(f"[dim]{category}[/]", classes="group-header"))
+            for skill in skills:
+                kb = skill.get("size", 0) / 1024
+                size_str = f" [dim]{kb:.1f}kb[/]" if skill.get("size") else ""
+                container.mount(Static(f"  [$accent]◆[/] {skill['name']}{size_str}"))
 
 
 # ── MCP server status (V2 — populated from /mcp/servers endpoint) ────
