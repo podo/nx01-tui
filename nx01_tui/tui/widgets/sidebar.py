@@ -499,6 +499,16 @@ class MonitorSidebar(Vertical):
     # a different sidebar should bias narrower or wider.
     MIN_WIDTH = 30
     MAX_WIDTH = 50
+    RESIZE_STEP = 2  # cells per keypress
+
+    def resize_step(self, direction: int) -> None:
+        """Adjust sidebar width by RESIZE_STEP * direction. Clamped to [MIN_WIDTH, MAX_WIDTH]."""
+        try:
+            current = int(self.styles.width.value)
+        except Exception:  # noqa: BLE001
+            current = self.MIN_WIDTH
+        new_width = max(self.MIN_WIDTH, min(self.MAX_WIDTH, current + direction * self.RESIZE_STEP))
+        self.styles.width = new_width
 
     def apply_terminal_width(self, width: int) -> None:
         self.remove_class("hidden")

@@ -128,6 +128,8 @@ class Nx01App(App):
         Binding("ctrl+7", "select_flavor(6)", show=False, priority=True),
         Binding("ctrl+8", "select_flavor(7)", show=False, priority=True),
         Binding("ctrl+9", "select_flavor(8)", show=False, priority=True),
+        Binding("ctrl+bracketleft", "sidebar_narrow", "Narrow sidebar", show=False, priority=True),
+        Binding("ctrl+bracketright", "sidebar_widen", "Widen sidebar", show=False, priority=True),
     ]
 
     def __init__(
@@ -779,6 +781,18 @@ class Nx01App(App):
         self.push_screen(
             ConfigModal({"base_url": self.base_url, "model": self.query_one(AppHeader).model})
         )
+
+    def action_sidebar_narrow(self) -> None:
+        """Narrow the active flavor's sidebar by one step."""
+        flavor = self._active_flavor()
+        if flavor and flavor in self._panes:
+            self._panes[flavor].sidebar.resize_step(-1)
+
+    def action_sidebar_widen(self) -> None:
+        """Widen the active flavor's sidebar by one step."""
+        flavor = self._active_flavor()
+        if flavor and flavor in self._panes:
+            self._panes[flavor].sidebar.resize_step(1)
 
     def action_switch_model(self) -> None:
         self.run_worker(self._switch_model(), exclusive=False)

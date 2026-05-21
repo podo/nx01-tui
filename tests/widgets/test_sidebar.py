@@ -456,3 +456,61 @@ def test_preload_skills_preserves_path():
     )
     assert state.skills_loaded[0]["path"] == "devops/ci-setup"
     assert state.skills_loaded[1]["path"] == "devops/deploy"
+
+
+@pytest.mark.asyncio
+async def test_sidebar_resize_step_narrows():
+    """resize_step(-1) reduces sidebar width by RESIZE_STEP."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        sb = app.query_one(MonitorSidebar)
+        sb.apply_terminal_width(160)
+        await pilot.pause(0.05)
+        initial = int(sb.styles.width.value)
+        sb.resize_step(-1)
+        await pilot.pause(0.05)
+        new_width = int(sb.styles.width.value)
+        assert new_width == max(sb.MIN_WIDTH, initial - sb.RESIZE_STEP)
+
+
+@pytest.mark.asyncio
+async def test_sidebar_resize_step_widens():
+    """resize_step(+1) increases sidebar width by RESIZE_STEP."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        sb = app.query_one(MonitorSidebar)
+        sb.styles.width = 35
+        await pilot.pause(0.05)
+        sb.resize_step(1)
+        await pilot.pause(0.05)
+        assert int(sb.styles.width.value) == min(sb.MAX_WIDTH, 35 + sb.RESIZE_STEP)
+
+
+@pytest.mark.asyncio
+async def test_sidebar_resize_clamps_to_min():
+    """resize_step(-1) does not go below MIN_WIDTH."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        sb = app.query_one(MonitorSidebar)
+        sb.styles.width = sb.MIN_WIDTH
+        await pilot.pause(0.05)
+        sb.resize_step(-1)
+        await pilot.pause(0.05)
+        assert int(sb.styles.width.value) == sb.MIN_WIDTH
+
+
+@pytest.mark.asyncio
+async def test_sidebar_resize_clamps_to_max():
+    """resize_step(+1) does not exceed MAX_WIDTH."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        sb = app.query_one(MonitorSidebar)
+        sb.styles.width = sb.MAX_WIDTH
+        await pilot.pause(0.05)
+        sb.resize_step(1)
+        await pilot.pause(0.05)
+        assert int(sb.styles.width.value) == sb.MAX_WIDTH
