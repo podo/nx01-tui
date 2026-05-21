@@ -234,12 +234,15 @@ class McpSection(_Section):
 class ContextSection(_Section):
     DEFAULT_CSS = """
     ContextSection ProgressBar { width: 1fr; height: 1; }
+    ContextSection .ctx-row { color: $text-muted; height: 1; }
     ContextSection #context-label { color: $text-muted; }
     """
 
     DEFAULT_LIMIT = 200_000
 
     tokens: reactive[int] = reactive(0)
+    input_tokens: reactive[int] = reactive(0)
+    output_tokens: reactive[int] = reactive(0)
     limit: reactive[int] = reactive(DEFAULT_LIMIT)
 
     def __init__(self) -> None:
@@ -247,22 +250,38 @@ class ContextSection(_Section):
 
     def compose(self) -> ComposeResult:
         yield from super().compose()
-        yield Static(self._label(0, self.DEFAULT_LIMIT), id="context-label")
+        yield Static(self._context_label(0, self.DEFAULT_LIMIT), id="context-label")
         yield ProgressBar(
             total=self.DEFAULT_LIMIT, show_eta=False, show_percentage=False, id="context-bar"
         )
+        yield Static("[dim]in [/]  0", classes="ctx-row", id="input-label")
+        yield Static("[dim]out[/]  0", classes="ctx-row", id="output-label")
+        yield Static("[dim]cost[/] —", classes="ctx-row", id="cost-label")
 
-    def _label(self, used: int, limit: int) -> str:
+    def _context_label(self, used: int, limit: int) -> str:
         pct = (used / limit) * 100 if limit else 0
         color = "$success" if pct < 60 else ("$warning" if pct < 80 else "$error")
         return f"[dim]{used:,} / {limit:,}[/]  [{color}]{pct:.0f}%[/]"
 
-    def watch_tokens(self, value: int) -> None:
+    def _refresh(self) -> None:
         try:
-            self.query_one("#context-bar", ProgressBar).progress = value
-            self.query_one("#context-label", Static).update(self._label(value, self.limit))
+            self.query_one("#context-bar", ProgressBar).progress = self.tokens
+            self.query_one("#context-label", Static).update(
+                self._context_label(self.tokens, self.limit)
+            )
+            self.query_one("#input-label", Static).update(f"[dim]in [/]  {self.input_tokens:,}")
+            self.query_one("#output-label", Static).update(f"[dim]out[/]  {self.output_tokens:,}")
         except Exception:  # noqa: BLE001
             pass
+
+    def watch_tokens(self, _: int) -> None:
+        self._refresh()
+
+    def watch_input_tokens(self, _: int) -> None:
+        self._refresh()
+
+    def watch_output_tokens(self, _: int) -> None:
+        self._refresh()
 
 
 # ── Session ────────────────────────────────────────────────────────────
@@ -341,7 +360,10 @@ class MonitorSidebar(Vertical):
         except Exception:  # noqa: BLE001
             pass
         try:
-            self.query_one(ContextSection).tokens = state.token_usage.get("total", 0)
+            ctx = self.query_one(ContextSection)
+            ctx.tokens = state.token_usage.get("total", 0)
+            ctx.input_tokens = state.token_usage.get("input", 0)
+            ctx.output_tokens = state.token_usage.get("output", 0)
         except Exception:  # noqa: BLE001
             pass
         try:

@@ -178,3 +178,68 @@ async def test_update_from_calls_mcp_section():
         await pilot.pause(0.05)
         rows = sb.query_one(McpSection).query_one("#mcp-list").children
         assert len(list(rows)) == 1
+
+
+@pytest.mark.asyncio
+async def test_context_section_shows_input_output_breakdown():
+    """ContextSection renders input/output/cost rows."""
+    from nx01_tui.tui.widgets.sidebar import ContextSection
+
+    class _CtxHost(App):
+        def compose(self) -> ComposeResult:
+            yield ContextSection()
+
+    app = _CtxHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        ctx = app.query_one(ContextSection)
+        ctx.input_tokens = 8_000
+        ctx.output_tokens = 2_000
+        ctx.tokens = 10_000
+        await pilot.pause(0.05)
+        inp = app.query_one("#input-label")
+        out = app.query_one("#output-label")
+        cost = app.query_one("#cost-label")
+        assert inp is not None
+        assert out is not None
+        assert cost is not None
+
+
+@pytest.mark.asyncio
+async def test_context_section_cost_shows_dash():
+    """Cost row shows '—' by default (cost monitor not yet wired)."""
+    from nx01_tui.tui.widgets.sidebar import ContextSection
+
+    class _CtxHost(App):
+        def compose(self) -> ComposeResult:
+            yield ContextSection()
+
+    app = _CtxHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        cost = app.query_one("#cost-label", Static)
+        assert "—" in str(cost.content)
+
+
+@pytest.mark.asyncio
+async def test_context_section_update_from_passes_input_output():
+    """MonitorSidebar.update_from() sets input_tokens and output_tokens on ContextSection."""
+    from nx01_tui.tui.widgets.sidebar import ContextSection
+
+    class _SbHost(App):
+        def compose(self) -> ComposeResult:
+            yield MonitorSidebar(flavor="assistant")
+
+    state = FlavorState(name="assistant")
+    state.token_usage = {"input": 3_000, "output": 1_200, "total": 4_200}
+
+    app = _SbHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        sb = app.query_one(MonitorSidebar)
+        sb.update_from(state)
+        await pilot.pause(0.05)
+        ctx = sb.query_one(ContextSection)
+        assert ctx.tokens == 4_200
+        assert ctx.input_tokens == 3_000
+        assert ctx.output_tokens == 1_200
