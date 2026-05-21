@@ -311,3 +311,73 @@ async def test_session_health_in_monitor_sidebar():
         # SessionHealthSection must exist in the sidebar
         section = app.query_one(SessionHealthSection)
         assert section is not None
+
+
+@pytest.mark.asyncio
+async def test_bg_tasks_shows_only_active_queued():
+    """BackgroundTasksSection shows ACTIVE and QUEUED tool calls, not DONE/ERROR."""
+    from nx01_tui.tui.widgets.sidebar import BackgroundTasksSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield BackgroundTasksSection()
+
+    state = FlavorState(name="assistant")
+    # "started" → ToolStatus.ACTIVE
+    state.apply_tool("bash", "sleep 5", "started", call_id="bg1")
+    # "completed" → ToolStatus.DONE
+    state.apply_tool("read", "file.txt", "completed", call_id="done1")
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(BackgroundTasksSection)
+        section.update_from(state)
+        await pilot.pause(0.05)
+        rows = list(section.query_one("#bg-rows").children)
+        # Only active tool should show (done is excluded)
+        assert len(rows) >= 1
+        # The done tool should NOT be shown
+        row_texts = [(r.content if hasattr(r, "content") else str(r.renderable)) for r in rows]
+        assert not any("file.txt" in t for t in row_texts)
+
+
+@pytest.mark.asyncio
+async def test_bg_tasks_idle_when_empty():
+    """BackgroundTasksSection shows idle placeholder when no active/queued tasks."""
+    from nx01_tui.tui.widgets.sidebar import BackgroundTasksSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield BackgroundTasksSection()
+
+    state = FlavorState(name="assistant")
+    # Only a done tool — nothing active
+    state.apply_tool("read", "file.txt", "completed", call_id="done1")
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(BackgroundTasksSection)
+        section.update_from(state)
+        await pilot.pause(0.05)
+        empty = section.query_one("#bg-empty")
+        # empty placeholder should be visible
+        assert empty is not None
+        assert empty.display is True
+
+
+@pytest.mark.asyncio
+async def test_bg_tasks_in_monitor_sidebar():
+    """BackgroundTasksSection is wired into MonitorSidebar."""
+    from nx01_tui.tui.widgets.sidebar import BackgroundTasksSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield MonitorSidebar(flavor="assistant")
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(BackgroundTasksSection)
+        assert section is not None

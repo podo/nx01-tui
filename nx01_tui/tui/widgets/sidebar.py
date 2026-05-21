@@ -84,6 +84,45 @@ class ActivitySection(_Section):
             pass
 
 
+# ── Background Tasks ───────────────────────────────────────────────────
+
+
+class BackgroundTasksSection(_Section):
+    """Shows ACTIVE + QUEUED tool calls — 'what is running right now'."""
+
+    DEFAULT_CSS = """
+    BackgroundTasksSection { height: auto; min-height: 2; }
+    BackgroundTasksSection #bg-rows { height: auto; max-height: 5; }
+    BackgroundTasksSection #bg-empty { color: $text-muted; height: 1; }
+    """
+
+    def __init__(self) -> None:
+        super().__init__(title="Background")
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield VerticalScroll(id="bg-rows")
+        yield Static("[dim]idle[/]", id="bg-empty")
+
+    def update_from(self, state: FlavorState) -> None:
+        active = [
+            tc for tc in state.tool_calls if tc.status in (ToolStatus.ACTIVE, ToolStatus.QUEUED)
+        ]
+        try:
+            rows = self.query_one("#bg-rows", VerticalScroll)
+            empty = self.query_one("#bg-empty", Static)
+        except Exception:  # noqa: BLE001
+            return
+        rows.remove_children()
+        if not active:
+            empty.display = True
+            return
+        empty.display = False
+        for tc in active[-5:]:
+            icon = "[$success]✻[/]" if tc.status == ToolStatus.ACTIVE else "[dim]○[/]"
+            rows.mount(Static(f"{icon} [bold]{tc.tool}[/] [dim]{tc.elapsed_str()}[/]"))
+
+
 # ── Memory ─────────────────────────────────────────────────────────────
 
 
@@ -390,6 +429,7 @@ class MonitorSidebar(Vertical):
     def compose(self) -> ComposeResult:
         yield SessionHealthSection()
         yield ActivitySection()
+        yield BackgroundTasksSection()
         yield MemorySection()
         yield SkillsSection()
         yield McpSection()
@@ -406,6 +446,10 @@ class MonitorSidebar(Vertical):
             pass
         try:
             self.query_one(ActivitySection).update_from(state)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.query_one(BackgroundTasksSection).update_from(state)
         except Exception:  # noqa: BLE001
             pass
         try:
