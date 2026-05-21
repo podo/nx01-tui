@@ -228,7 +228,7 @@ class SkillsSection(_Section):
         groups: dict[str, list[dict]] = defaultdict(list)
         for skill in state.skills_loaded[-12:]:
             path = skill.get("path") or skill["name"]
-            category = path.split("/")[0] if "/" in path else skill["name"]
+            category = path.split("/")[0]
             groups[category].append(skill)
 
         for category, skills in sorted(groups.items()):
