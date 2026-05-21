@@ -10,6 +10,8 @@ Sections (per DESIGN.md §5):
 
 from __future__ import annotations
 
+from typing import Any
+
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.reactive import reactive
@@ -297,7 +299,8 @@ class CronSection(_Section):
         yield from super().compose()
         yield Vertical(id="cron-list")
 
-    def update_jobs(self, jobs: list[dict]) -> None:
+    def update_jobs(self, jobs: list[dict[str, Any]]) -> None:
+        # next_run / last_run reserved for horizontal 24h timeline (follow-up)
         try:
             container = self.query_one("#cron-list", Vertical)
         except Exception:  # noqa: BLE001
@@ -311,7 +314,7 @@ class CronSection(_Section):
             color = (
                 "$success"
                 if status == "running"
-                else ("$warning" if status == "error" else "$text-muted")
+                else ("$error" if status == "error" else "$text-muted")
             )
             icon = "▶" if status == "running" else "◷"
             name = (job.get("name") or "?")[:18]

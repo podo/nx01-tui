@@ -170,7 +170,7 @@ class Nx01Client:
 
     # ── MCP servers ──────────────────────────────────────────────────
 
-    async def get_mcp_servers(self, flavor: str) -> list[dict]:
+    async def get_mcp_servers(self, flavor: str) -> list[dict[str, Any]]:
         """Fetch MCP server status for `flavor`. Returns [] on any error."""
         try:
             r = await self._client.get("/mcp/servers", params={"flavor": flavor})
@@ -179,7 +179,7 @@ class Nx01Client:
         except Exception:  # noqa: BLE001
             return []
 
-    async def get_cron_jobs(self, flavor: str) -> list[dict]:
+    async def get_cron_jobs(self, flavor: str) -> list[dict[str, Any]]:
         """Fetch cron job schedule for `flavor`. Returns [] on any error."""
         try:
             r = await self._client.get("/cron/jobs", params={"flavor": flavor})
