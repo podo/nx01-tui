@@ -61,6 +61,7 @@ class FlavorState:
     """All in-memory state for a single flavor tab."""
 
     name: str
+    model: str = ""
     state: AgentState = AgentState.IDLE
     status: str = "idle"  # backend FlavorStatusEvent
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -74,6 +75,8 @@ class FlavorState:
     _tc_active: int = field(default=0, init=False, repr=False)
     _tc_queued: int = field(default=0, init=False, repr=False)
     skills_loaded: list[dict[str, Any]] = field(default_factory=list)
+    mcp_servers: list[dict[str, Any]] = field(default_factory=list)
+    cron_jobs: list[dict[str, Any]] = field(default_factory=list)
     token_usage: dict[str, int] = field(
         default_factory=lambda: {"input": 0, "output": 0, "total": 0}
     )
@@ -165,8 +168,9 @@ class FlavorState:
         for skill in skills:
             name = skill.get("name", "")
             size = int(skill.get("size") or 0)
+            path = skill.get("path") or name
             if name and not any(s["name"] == name for s in self.skills_loaded):
-                self.skills_loaded.append({"name": name, "size": size})
+                self.skills_loaded.append({"name": name, "size": size, "path": path})
 
     def seal_turn(self, stop_reason: str = "", token_usage: dict[str, int] | None = None) -> None:
         self.seal_thinking()

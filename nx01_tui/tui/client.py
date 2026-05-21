@@ -168,6 +168,26 @@ class Nx01Client:
             f"/memory/{store}", params=params, json={"action": action, **kwargs}
         )
 
+    # ── MCP servers ──────────────────────────────────────────────────
+
+    async def get_mcp_servers(self, flavor: str) -> list[dict[str, Any]]:
+        """Fetch MCP server status for `flavor`. Returns [] on any error."""
+        try:
+            r = await self._client.get("/mcp/servers", params={"flavor": flavor})
+            r.raise_for_status()
+            return r.json().get("servers", [])
+        except Exception:  # noqa: BLE001
+            return []
+
+    async def get_cron_jobs(self, flavor: str) -> list[dict[str, Any]]:
+        """Fetch cron job schedule for `flavor`. Returns [] on any error."""
+        try:
+            r = await self._client.get("/cron/jobs", params={"flavor": flavor})
+            r.raise_for_status()
+            return r.json().get("jobs", [])
+        except Exception:  # noqa: BLE001
+            return []
+
     # ── Skills ───────────────────────────────────────────────────────
 
     async def list_skills(self, flavor: str | None = None) -> list[dict[str, Any]]:

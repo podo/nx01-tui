@@ -10,6 +10,8 @@ Sections (per DESIGN.md §5):
 
 from __future__ import annotations
 
+from typing import Any
+
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.reactive import reactive
@@ -84,6 +86,45 @@ class ActivitySection(_Section):
             pass
 
 
+# ── Background Tasks ───────────────────────────────────────────────────
+
+
+class BackgroundTasksSection(_Section):
+    """Shows ACTIVE + QUEUED tool calls — 'what is running right now'."""
+
+    DEFAULT_CSS = """
+    BackgroundTasksSection { height: auto; min-height: 2; }
+    BackgroundTasksSection #bg-rows { height: auto; max-height: 5; }
+    BackgroundTasksSection #bg-empty { color: $text-muted; height: 1; }
+    """
+
+    def __init__(self) -> None:
+        super().__init__(title="Background")
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield VerticalScroll(id="bg-rows")
+        yield Static("[dim]idle[/]", id="bg-empty")
+
+    def update_from(self, state: FlavorState) -> None:
+        active = [
+            tc for tc in state.tool_calls if tc.status in (ToolStatus.ACTIVE, ToolStatus.QUEUED)
+        ]
+        try:
+            rows = self.query_one("#bg-rows", VerticalScroll)
+            empty = self.query_one("#bg-empty", Static)
+        except Exception:  # noqa: BLE001
+            return
+        rows.remove_children()
+        if not active:
+            empty.display = True
+            return
+        empty.display = False
+        for tc in active[-5:]:
+            icon = "[$success]✻[/]" if tc.status == ToolStatus.ACTIVE else "[dim]○[/]"
+            rows.mount(Static(f"{icon} [bold]{tc.tool}[/] [dim]{tc.elapsed_str()}[/]"))
+
+
 # ── Memory ─────────────────────────────────────────────────────────────
 
 
@@ -93,6 +134,7 @@ class MemorySection(_Section):
     MemorySection Bar > .bar--bar { color: $success; }
     MemorySection .row { height: 1; }
     MemorySection .label-row { color: $text-muted; }
+    MemorySection #mem0-row { color: $text-muted; height: 1; }
     """
 
     AGENT_LIMIT = 2200
@@ -116,6 +158,7 @@ class MemorySection(_Section):
         yield ProgressBar(
             total=self.USER_LIMIT, show_eta=False, show_percentage=False, id="user-bar"
         )
+        yield Static("[dim]mem0[/]  off", id="mem0-row")
 
     def _label(self, name: str, used: int, limit: int) -> str:
         pct = (used / limit) * 100 if limit else 0
@@ -146,13 +189,22 @@ class MemorySection(_Section):
         except Exception:  # noqa: BLE001
             pass
 
+    def set_mem0_status(self, status: str) -> None:
+        """Update the mem0 row. Call with 'active' when ADR 0012 ships."""
+        try:
+            color = "$success" if status == "active" else "$text-muted"
+            self.query_one("#mem0-row", Static).update(f"[{color}]mem0[/]  {status}")
+        except Exception:  # noqa: BLE001
+            pass
+
 
 # ── Skills ─────────────────────────────────────────────────────────────
 
 
 class SkillsSection(_Section):
     DEFAULT_CSS = """
-    SkillsSection #skills-list { height: auto; max-height: 6; }
+    SkillsSection #skills-list { height: auto; max-height: 8; }
+    SkillsSection .group-header { color: $text-muted; text-style: italic; height: 1; }
     """
 
     def __init__(self) -> None:
@@ -163,6 +215,8 @@ class SkillsSection(_Section):
         yield Vertical(id="skills-list")
 
     def update_from(self, state: FlavorState) -> None:
+        from collections import defaultdict
+
         try:
             container = self.query_one("#skills-list", Vertical)
         except Exception:  # noqa: BLE001
@@ -171,10 +225,20 @@ class SkillsSection(_Section):
         if not state.skills_loaded:
             container.mount(Static("[dim]no skills loaded[/]"))
             return
-        for skill in state.skills_loaded[-6:]:
-            kb = skill.get("size", 0) / 1024
-            size_str = f"  [dim]{kb:.1f}kb[/]" if skill.get("size") else ""
-            container.mount(Static(f"[$accent]◆[/] [bold]{skill['name']}[/]{size_str}"))
+
+        # Group by path prefix (directory above skill name)
+        groups: dict[str, list[dict]] = defaultdict(list)
+        for skill in state.skills_loaded[-12:]:
+            path = skill.get("path") or skill["name"]
+            category = path.split("/")[0]
+            groups[category].append(skill)
+
+        for category, skills in sorted(groups.items()):
+            container.mount(Static(f"[dim]{category}[/]", classes="group-header"))
+            for skill in skills:
+                kb = skill.get("size", 0) / 1024
+                size_str = f" [dim]{kb:.1f}kb[/]" if skill.get("size") else ""
+                container.mount(Static(f"  [$accent]◆[/] {skill['name']}{size_str}"))
 
 
 # ── MCP server status (V2 — populated from /mcp/servers endpoint) ────
@@ -218,18 +282,66 @@ class McpSection(_Section):
             )
 
 
+# ── Cron jobs ─────────────────────────────────────────────────────────
+
+
+class CronSection(_Section):
+    """Cron job timeline — one row per scheduled job with status icon."""
+
+    DEFAULT_CSS = """
+    CronSection .cron-row { height: 1; color: $text-muted; }
+    """
+
+    def __init__(self) -> None:
+        super().__init__(title="Cron")
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield Vertical(id="cron-list")
+
+    def update_jobs(self, jobs: list[dict[str, Any]]) -> None:
+        # next_run / last_run reserved for horizontal 24h timeline (follow-up)
+        try:
+            container = self.query_one("#cron-list", Vertical)
+        except Exception:  # noqa: BLE001
+            return
+        container.remove_children()
+        if not jobs:
+            container.mount(Static("[dim]no jobs[/]", classes="cron-row"))
+            return
+        for job in jobs[:6]:
+            status = (job.get("status") or "unknown").lower()
+            color = (
+                "$success"
+                if status == "running"
+                else ("$error" if status == "error" else "$text-muted")
+            )
+            icon = "▶" if status == "running" else "◷"
+            name = (job.get("name") or "?")[:18]
+            schedule = (job.get("schedule") or "")[:12]
+            container.mount(
+                Static(
+                    f"[{color}]{icon}[/] [bold]{name}[/] [dim]{schedule}[/]",
+                    classes="cron-row",
+                )
+            )
+
+
 # ── Context ────────────────────────────────────────────────────────────
 
 
 class ContextSection(_Section):
     DEFAULT_CSS = """
     ContextSection ProgressBar { width: 1fr; height: 1; }
+    ContextSection .ctx-row { color: $text-muted; height: 1; }
     ContextSection #context-label { color: $text-muted; }
     """
 
     DEFAULT_LIMIT = 200_000
 
     tokens: reactive[int] = reactive(0)
+    input_tokens: reactive[int] = reactive(0)
+    output_tokens: reactive[int] = reactive(0)
     limit: reactive[int] = reactive(DEFAULT_LIMIT)
 
     def __init__(self) -> None:
@@ -237,22 +349,38 @@ class ContextSection(_Section):
 
     def compose(self) -> ComposeResult:
         yield from super().compose()
-        yield Static(self._label(0, self.DEFAULT_LIMIT), id="context-label")
+        yield Static(self._context_label(0, self.DEFAULT_LIMIT), id="context-label")
         yield ProgressBar(
             total=self.DEFAULT_LIMIT, show_eta=False, show_percentage=False, id="context-bar"
         )
+        yield Static("[dim]in [/]  0", classes="ctx-row", id="input-label")
+        yield Static("[dim]out[/]  0", classes="ctx-row", id="output-label")
+        yield Static("[dim]cost[/] —", classes="ctx-row", id="cost-label")
 
-    def _label(self, used: int, limit: int) -> str:
+    def _context_label(self, used: int, limit: int) -> str:
         pct = (used / limit) * 100 if limit else 0
         color = "$success" if pct < 60 else ("$warning" if pct < 80 else "$error")
         return f"[dim]{used:,} / {limit:,}[/]  [{color}]{pct:.0f}%[/]"
 
-    def watch_tokens(self, value: int) -> None:
+    def _refresh(self) -> None:
         try:
-            self.query_one("#context-bar", ProgressBar).progress = value
-            self.query_one("#context-label", Static).update(self._label(value, self.limit))
+            self.query_one("#context-bar", ProgressBar).progress = self.tokens
+            self.query_one("#context-label", Static).update(
+                self._context_label(self.tokens, self.limit)
+            )
+            self.query_one("#input-label", Static).update(f"[dim]in [/]  {self.input_tokens:,}")
+            self.query_one("#output-label", Static).update(f"[dim]out[/]  {self.output_tokens:,}")
         except Exception:  # noqa: BLE001
             pass
+
+    def watch_tokens(self, _: int) -> None:
+        self._refresh()
+
+    def watch_input_tokens(self, _: int) -> None:
+        self._refresh()
+
+    def watch_output_tokens(self, _: int) -> None:
+        self._refresh()
 
 
 # ── Session ────────────────────────────────────────────────────────────
@@ -285,6 +413,58 @@ class SessionSection(_Section):
             pass
 
 
+# ── Session Health ─────────────────────────────────────────────────────
+
+
+class SessionHealthSection(_Section):
+    """Top-of-sidebar health card: agent state, message count, session ID."""
+
+    DEFAULT_CSS = """
+    SessionHealthSection { border-bottom: solid $panel; padding-bottom: 1; }
+    SessionHealthSection .health-row { height: 1; }
+    """
+
+    _STATE_ICONS: dict[str, str] = {
+        "idle": "○",
+        "thinking": "◌",
+        "streaming": "◎",
+        "tool_call": "◉",
+        "done": "●",
+        "error": "✗",
+    }
+
+    _STATE_COLORS: dict[str, str] = {
+        "idle": "$text-muted",
+        "thinking": "$warning",
+        "streaming": "$accent",
+        "tool_call": "$success",
+        "done": "$success",
+        "error": "$error",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(title="Health")
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield Static("○ idle", classes="health-row", id="health-state")
+        yield Static("[dim]msgs[/]  0", classes="health-row", id="health-msgs")
+        yield Static("[dim]sess[/]  —", classes="health-row", id="health-sess")
+
+    def update_from(self, state: FlavorState) -> None:
+        state_name = state.state.value if hasattr(state.state, "value") else str(state.state)
+        icon = self._STATE_ICONS.get(state_name, "?")
+        color = self._STATE_COLORS.get(state_name, "$text-muted")
+        sess = state.session_id
+        sess_short = (sess[:8] + "…") if len(sess) > 8 else (sess or "—")
+        try:
+            self.query_one("#health-state", Static).update(f"[{color}]{icon} {state_name}[/]")
+            self.query_one("#health-msgs", Static).update(f"[dim]msgs[/]  {len(state.messages)}")
+            self.query_one("#health-sess", Static).update(f"[dim]sess[/]  {sess_short}")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 # ── Sidebar container ──────────────────────────────────────────────────
 
 
@@ -307,10 +487,13 @@ class MonitorSidebar(Vertical):
         self.flavor = flavor
 
     def compose(self) -> ComposeResult:
+        yield SessionHealthSection()
         yield ActivitySection()
+        yield BackgroundTasksSection()
         yield MemorySection()
         yield SkillsSection()
         yield McpSection()
+        yield CronSection()
         yield ContextSection()
         yield SessionSection()
 
@@ -319,7 +502,15 @@ class MonitorSidebar(Vertical):
     def update_from(self, state: FlavorState) -> None:
         """Sync the entire sidebar from a FlavorState snapshot."""
         try:
+            self.query_one(SessionHealthSection).update_from(state)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             self.query_one(ActivitySection).update_from(state)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.query_one(BackgroundTasksSection).update_from(state)
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -327,7 +518,18 @@ class MonitorSidebar(Vertical):
         except Exception:  # noqa: BLE001
             pass
         try:
-            self.query_one(ContextSection).tokens = state.token_usage.get("total", 0)
+            self.query_one(McpSection).update_servers(state.mcp_servers)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.query_one(CronSection).update_jobs(state.cron_jobs)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            ctx = self.query_one(ContextSection)
+            ctx.tokens = state.token_usage.get("total", 0)
+            ctx.input_tokens = state.token_usage.get("input", 0)
+            ctx.output_tokens = state.token_usage.get("output", 0)
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -349,6 +551,16 @@ class MonitorSidebar(Vertical):
     # a different sidebar should bias narrower or wider.
     MIN_WIDTH = 30
     MAX_WIDTH = 50
+    RESIZE_STEP = 2  # cells per keypress
+
+    def resize_step(self, direction: int) -> None:
+        """Adjust sidebar width by RESIZE_STEP * direction. Clamped to [MIN_WIDTH, MAX_WIDTH]."""
+        try:
+            current = int(self.styles.width.value)
+        except Exception:  # noqa: BLE001
+            current = self.MIN_WIDTH
+        new_width = max(self.MIN_WIDTH, min(self.MAX_WIDTH, current + direction * self.RESIZE_STEP))
+        self.styles.width = new_width
 
     def apply_terminal_width(self, width: int) -> None:
         self.remove_class("hidden")

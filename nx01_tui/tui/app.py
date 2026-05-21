@@ -122,6 +122,8 @@ class Nx01App(App):
         Binding("ctrl+7", "select_flavor(6)", show=False, priority=True),
         Binding("ctrl+8", "select_flavor(7)", show=False, priority=True),
         Binding("ctrl+9", "select_flavor(8)", show=False, priority=True),
+        Binding("ctrl+bracketleft", "sidebar_narrow", "Narrow sidebar", show=False, priority=True),
+        Binding("ctrl+bracketright", "sidebar_widen", "Widen sidebar", show=False, priority=True),
     ]
 
     def __init__(
@@ -172,6 +174,7 @@ class Nx01App(App):
 
     async def _bootstrap(self) -> None:
         flavors: list[str] = list(self._initial_flavors)
+        snapshot: object = None
         try:
             snapshot = await self.client.get_flavors()
             if isinstance(snapshot, dict):
@@ -211,6 +214,34 @@ class Nx01App(App):
 
         for name in flavors:
             self._ensure_flavor(name)
+            # Set model from snapshot so header reflects the active flavor's model
+            if isinstance(snapshot, dict):
+                flavor_data = snapshot.get(name, {})
+            elif isinstance(snapshot, list):
+                flavor_data = next(
+                    (f for f in snapshot if isinstance(f, dict) and f.get("name") == name), {}
+                )
+            else:
+                flavor_data = {}
+            m = flavor_data.get("model", "")
+            if isinstance(m, str) and m and name in self._states:
+                self._states[name].model = m
+
+            # Best-effort MCP server status fetch at startup
+            try:
+                servers = await self.client.get_mcp_servers(name)
+                if name in self._states:
+                    self._states[name].mcp_servers = servers
+            except Exception:  # noqa: BLE001
+                pass
+
+            # Best-effort cron jobs fetch at startup
+            try:
+                jobs = await self.client.get_cron_jobs(name)
+                if name in self._states:
+                    self._states[name].cron_jobs = jobs
+            except Exception:  # noqa: BLE001
+                pass
 
         # Auto-focus the active flavor's input so the user can type immediately.
         self._focus_active_input()
@@ -799,6 +830,18 @@ class Nx01App(App):
             ConfigModal({"base_url": self.base_url, "model": self.query_one(AppHeader).model})
         )
 
+    def action_sidebar_narrow(self) -> None:
+        """Narrow the active flavor's sidebar by one step."""
+        flavor = self._active_flavor()
+        if flavor and flavor in self._panes:
+            self._panes[flavor].sidebar.resize_step(-1)
+
+    def action_sidebar_widen(self) -> None:
+        """Widen the active flavor's sidebar by one step."""
+        flavor = self._active_flavor()
+        if flavor and flavor in self._panes:
+            self._panes[flavor].sidebar.resize_step(1)
+
     def action_switch_model(self) -> None:
         self.run_worker(self._switch_model(), exclusive=False)
 
@@ -813,6 +856,10 @@ class Nx01App(App):
         if chosen:
             self.query_one(AppHeader).model = chosen
             self.notify(f"Model: {chosen}")
+            # Keep per-flavor state in sync so tab-switch doesn't clobber this choice.
+            flavor = self._active_flavor()
+            if flavor and flavor in self._states:
+                self._states[flavor].model = chosen
 
     async def action_new_session(self) -> None:
         flavor = self._active_flavor()
@@ -1050,6 +1097,13 @@ class Nx01App(App):
         if flavor and flavor in self._states:
             self._refresh_status_bar(self._states[flavor])
             self._focus_active_input()
+            # Update header model to reflect newly-active flavor
+            m = self._states[flavor].model
+            if m:
+                try:
+                    self.query_one(AppHeader).model = m
+                except Exception:  # noqa: BLE001 — pre-mount safety
+                    pass
 
     # ── Responsive ───────────────────────────────────────────────────
 
