@@ -1,3 +1,3 @@
 """Version for nx01-tui (independent from nx01 server)."""
 
-__version__ = "1.1.0"
+__version__ = "1.4.1"

@@ -30,7 +30,11 @@ if str(ROOT) not in sys.path:
 from nx01_tui.tui.app import _STATE_FILE, Nx01App  # noqa: E402
 from nx01_tui.tui.events import parse_event  # noqa: E402
 from nx01_tui.tui.modals.sessions_modal import SessionsModal  # noqa: E402
-from nx01_tui.tui.widgets import AppHeader, ThinkingBlock, ToolCallBlock  # noqa: E402
+from nx01_tui.tui.widgets import (  # noqa: E402
+    AppHeader,
+    ThinkingBlock,
+    ToolCallBlock,
+)
 from nx01_tui.tui.widgets.conversation import UnreadDivider  # noqa: E402
 from nx01_tui.tui.widgets.sidebar import SkillsSection  # noqa: E402
 from tests.fixtures.sample_events import (  # noqa: E402
@@ -292,7 +296,7 @@ async def run() -> Report:
             ),
         )
 
-        # ── S03: Thinking block stays expanded on done() ─────────────
+        # ── S03: Thinking block auto-collapses on done() (V1) ────────
         # Pause after thinking so ThinkingBlock fully mounts before done() queries #label.
         app._dispatch_event(parse_event(thinking(text="Analysing the problem…")))
         await pilot.pause(0.3)
@@ -303,7 +307,7 @@ async def run() -> Report:
         conv = app._panes[flavor].conversation
         thinking_blocks = list(conv.query(ThinkingBlock))
         tb = thinking_blocks[-1] if thinking_blocks else None
-        is_not_collapsed = tb is not None and not tb.has_class("collapsed")
+        is_collapsed = tb is not None and tb.has_class("collapsed")
         is_done_class = tb is not None and tb.has_class("done")
         # Header label should contain the ✓ status symbol
         label_text = ""
@@ -316,11 +320,11 @@ async def run() -> Report:
             except Exception:
                 pass
         has_checkmark = "✓" in label_text or "Thought" in label_text
-        png = _screenshot(app, 3, "thinking_stays_expanded")
+        png = _screenshot(app, 3, "thinking_auto_collapsed")
         step(
-            "Thinking block — stays expanded after done(), shows ✓ status",
-            "done() must NOT auto-collapse. Block keeps its content visible with an inline status change.",  # noqa: E501
-            passed=is_not_collapsed and is_done_class and has_checkmark,
+            "Thinking block — auto-collapses on done(), shows ✓ status (V1)",
+            "done() must auto-collapse. Header shows 'Thought for Xs · click to review'. Body hidden until header click.",  # noqa: E501
+            passed=is_collapsed and is_done_class and has_checkmark,
             png=png,
             detail=(
                 f"collapsed={tb.has_class('collapsed') if tb else 'N/A'} "

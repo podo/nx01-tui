@@ -27,14 +27,30 @@ async def test_streams_chunks_while_thinking():
 
 
 @pytest.mark.asyncio
-async def test_done_stays_expanded_records_duration():
-    # done() no longer auto-collapses — block stays open for inline status.
+async def test_done_auto_collapses_by_default():
+    # done() auto-collapses (V1 behaviour); use done(auto_collapse=False) to keep open.
     app = _Host()
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
         block = app.query_one(ThinkingBlock)
         block.append_chunk("reasoning")
         block.done()
+        await pilot.pause(0.05)
+        assert block.thinking is False
+        assert block.collapsed is True
+        assert block.has_class("collapsed")
+        assert block.has_class("done")
+
+
+@pytest.mark.asyncio
+async def test_done_explicit_no_collapse():
+    # done(auto_collapse=False) keeps block expanded for review.
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        block.append_chunk("reasoning")
+        block.done(auto_collapse=False)
         await pilot.pause(0.05)
         assert block.thinking is False
         assert block.collapsed is False
@@ -104,3 +120,35 @@ async def test_click_on_body_does_not_toggle():
         await pilot.pause(0.05)
         # Still expanded — body click is inert
         assert not block.has_class("collapsed")
+
+
+@pytest.mark.asyncio
+async def test_append_chunk_single_write_per_chunk():
+    """append_chunk() must issue exactly one RichLog.write() per call — change 3."""
+    from unittest.mock import patch
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        with patch.object(block._log, "write") as mock_write:
+            block.append_chunk("multi\nline\nchunk")
+            assert mock_write.call_count == 1
+
+        with patch.object(block._log, "write") as mock_write:
+            block.append_chunk("single token")
+            assert mock_write.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_append_chunk_empty_is_noop():
+    """append_chunk('') must not call write at all."""
+    from unittest.mock import patch
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        block = app.query_one(ThinkingBlock)
+        with patch.object(block._log, "write") as mock_write:
+            block.append_chunk("")
+            assert mock_write.call_count == 0

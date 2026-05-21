@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from nx01_tui.tui.app import ConnectionStatusMessage, Nx01App, SseMessage
+from nx01_tui.tui.app import ConnectionStatusMessage, Nx01App
 from nx01_tui.tui.events import parse_event
 from nx01_tui.tui.state import AgentState
 from nx01_tui.tui.widgets import (
@@ -56,7 +56,7 @@ async def test_sse_message_routes_to_dispatcher():
     app = Nx01App("http://localhost:9999", flavors=["assistant"])
     async with app.run_test() as pilot:
         await _settle(app, pilot)
-        app.post_message(SseMessage(parse_event(chunk(text="streaming chunk"))))
+        app._event_queue.put_nowait(parse_event(chunk(text="streaming chunk")))
         await pilot.pause(0.1)
         state = app._states["assistant"]
         assert state.state == AgentState.STREAMING

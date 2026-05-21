@@ -16,12 +16,14 @@ Owns:
 from __future__ import annotations
 
 import asyncio
+import atexit
+import datetime
 import json
 import logging
 import re
 import time
 from collections import deque
-from datetime import UTC
+from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -74,14 +76,6 @@ logger = logging.getLogger(__name__)
 
 _STATE_FILE = Path.home() / ".nx01_tui_state.json"
 _CALL_ID_RE = re.compile(r"^tc-[a-f0-9]{8,}$")
-
-
-class SseMessage(Message):
-    """Wraps an SseEvent for main-thread dispatch via post_message."""
-
-    def __init__(self, event: SseEvent) -> None:
-        super().__init__()
-        self.event = event
 
 
 class ConnectionStatusMessage(Message):
@@ -156,6 +150,7 @@ class Nx01App(App):
         # Rolling SSE event log — fed to DebugModal on demand.
         self._debug_buffer: deque[SseEvent] = deque(maxlen=500)
         self._debug_modal: DebugModal | None = None
+        self._event_queue: asyncio.Queue[SseEvent] = asyncio.Queue()
 
     # ── Composition ──────────────────────────────────────────────────
 
@@ -167,9 +162,12 @@ class Nx01App(App):
     async def on_mount(self) -> None:
         domain = urlparse(self.base_url).netloc or self.base_url
         self.query_one(AppHeader).domain = domain
+        atexit.register(self._save_session_state)
         self.run_worker(self._bootstrap(), exclusive=True, name="bootstrap")
+        self.set_interval(1 / 60, self._drain_events)  # 60fps drain
 
     async def on_unmount(self) -> None:
+        self._save_session_state()
         await self.client.close()
 
     # ── Bootstrap (flavor discovery → SSE worker) ────────────────────
@@ -273,14 +271,8 @@ class Nx01App(App):
         return ""
 
     async def _bootstrap_slash_dropdowns(self, flavors: list[str]) -> None:
-        """Fetch commands once + per-flavor skills/tools; feed each dropdown.
-
-        FlavorPane mounts are queued by `tabs.add_pane` (sync) but the actual
-        DOM insertion happens on the next refresh cycle, so we yield once to
-        let those mounts complete before querying the dropdowns.
-        """
+        """Fetch commands once + per-flavor skills/tools concurrently; feed each dropdown."""
         # FlavorPane mounts queued by `tabs.add_pane` settle after a refresh.
-        # Wait briefly so #slash-{flavor} is queryable.
         for _ in range(20):
             await asyncio.sleep(0.05)
             try:
@@ -288,40 +280,55 @@ class Nx01App(App):
                     break
             except Exception:  # noqa: BLE001
                 continue
+
         try:
             commands = await self.client.list_commands()
         except Exception as exc:  # noqa: BLE001
             logger.warning("slash dropdown: list_commands failed: %s", exc)
             commands = []
-        for fl in flavors:
-            try:
-                skills = await self.client.list_skills(fl)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("slash dropdown: list_skills(%s) failed: %s", fl, exc)
-                skills = []
-            try:
-                tools_resp = await self.client.get_tools(fl)
-                tools = (
-                    tools_resp.get("tools", [])
-                    if isinstance(tools_resp, dict)
-                    else (tools_resp or [])
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("slash dropdown: get_tools(%s) failed: %s", fl, exc)
-                tools = []
+
+        # Fetch skills + tools for all flavors concurrently.
+        results = await asyncio.gather(
+            *[self._fetch_flavor_dropdown_data(fl) for fl in flavors],
+            return_exceptions=True,
+        )
+
+        for fl, result in zip(flavors, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning("slash dropdown: fetch failed for %s: %s", fl, result)
+                skills, tools = [], []
+            else:
+                skills, tools = result
+
             try:
                 self.query_one(f"#slash-{fl}", SlashDropdown).set_sources(
                     commands=commands, skills=skills, tools=tools
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("slash dropdown: set_sources(%s) failed: %s", fl, exc)
-            # Pre-populate skills sidebar from API data (SSE events may not fire
-            # for skills that were already installed before this session started).
+
             state = self._states.get(fl)
             pane = self._panes.get(fl)
             if state and pane and skills:
                 state.preload_skills(skills)
                 pane.sync_sidebar(state)
+
+    async def _fetch_flavor_dropdown_data(self, flavor: str) -> tuple[list, list]:
+        """Fetch skills + tools for one flavor concurrently. Returns (skills, tools)."""
+        try:
+            skills = await self.client.list_skills(flavor)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("slash dropdown: list_skills(%s) failed: %s", flavor, exc)
+            skills = []
+        try:
+            tools_resp = await self.client.get_tools(flavor)
+            tools = (
+                tools_resp.get("tools", []) if isinstance(tools_resp, dict) else (tools_resp or [])
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("slash dropdown: get_tools(%s) failed: %s", flavor, exc)
+            tools = []
+        return skills, tools
 
     def _focus_active_input(self) -> None:
         flavor = self._active_flavor()
@@ -347,7 +354,7 @@ class Nx01App(App):
         try:
             async for kind, payload in stream_with_backoff(self.client):
                 if kind == "event":
-                    self.post_message(SseMessage(payload))
+                    self._event_queue.put_nowait(payload)
                 elif kind == "disconnect":
                     self.post_message(ConnectionStatusMessage("disconnected", payload))
                 elif kind == "reconnecting":
@@ -361,12 +368,6 @@ class Nx01App(App):
             self.post_message(ConnectionStatusMessage("disconnected", exc))
 
     # ── Message dispatch ─────────────────────────────────────────────
-
-    def on_sse_message(self, message: SseMessage) -> None:
-        self._debug_buffer.append(message.event)
-        if self._debug_modal is not None:
-            self._debug_modal.push(message.event)
-        self._dispatch_event(message.event)
 
     def on_connection_status_message(self, message: ConnectionStatusMessage) -> None:
         hdr = self.query_one(AppHeader)
@@ -386,6 +387,31 @@ class Nx01App(App):
             self.notify(
                 f"Reconnecting… (attempt {message.detail})", severity="information", timeout=2
             )
+
+    async def _drain_events(self) -> None:
+        """Drain SSE event queue once per 60fps frame — single layout pass per drain."""
+        if self._event_queue.empty():
+            return
+        flavor = self._active_flavor()
+        pane = self._panes.get(flavor)
+        conv = pane.conversation if pane else None
+
+        ctx = conv.suppress_scroll() if conv is not None else nullcontext()
+        scrolled_active = False
+        # No awaits inside the drain — atomicity required for get_nowait safety.
+        with self.batch_update(), ctx:
+            while not self._event_queue.empty():
+                event = self._event_queue.get_nowait()
+                self._debug_buffer.append(event)
+                if self._debug_modal is not None:
+                    self._debug_modal.push(event)
+                event_flavor = event.flavor or self._active_flavor()
+                self._dispatch_event(event)
+                if event_flavor == flavor:
+                    scrolled_active = True
+
+        if conv is not None and scrolled_active:
+            conv.scroll_end(animate=False)
 
     def _dispatch_event(self, event: SseEvent) -> None:
         flavor = event.flavor or self._active_flavor()
@@ -413,7 +439,14 @@ class Nx01App(App):
             conv.end_assistant()
             self.run_worker(self._refresh_skills_for_flavor(flavor), exclusive=False)
         elif isinstance(event, ToolCallEvent):
-            call_id = event.raw.get("call_id", "") or f"{event.tool}-{event.at}"
+            raw_cid = event.raw.get("call_id", "")
+            if raw_cid:
+                call_id = raw_cid
+            elif _CALL_ID_RE.match(event.tool):
+                # Completion event: backend sends tool=call_id with no call_id field.
+                call_id = event.tool
+            else:
+                call_id = f"{event.tool}-{event.at}"
             tc = state.tool_calls[-1] if state.tool_calls else None
             # If the backend sent a raw call_id as the tool name, use the
             # human-readable title instead (both for the conv widget and the
@@ -428,13 +461,14 @@ class Nx01App(App):
             else:
                 tool_display = event.tool
                 args_display = event.title or ""
-            block = conv.get_tool(call_id) or conv.start_tool(
-                tool_display, args=args_display, call_id=call_id
-            )
-            if tc is not None:
-                block.set_status(tc.status)
-            if event.output:
-                block.append_output(event.output)
+            block = conv.get_tool(call_id)
+            if block is None and not _CALL_ID_RE.match(event.tool):
+                block = conv.start_tool(tool_display, args=args_display, call_id=call_id)
+            if block is not None:
+                if tc is not None:
+                    block.set_status(tc.status)
+                if event.output:
+                    block.append_output(event.output)
         elif isinstance(event, SkillLoadedEvent):
             conv.start_skill(event.skill_name, event.skill_size)
         elif isinstance(event, FlavorStatusEvent):
@@ -691,6 +725,8 @@ class Nx01App(App):
         flavor: str,
         rows: list[dict],
         unread_from_row: int | None = None,
+        *,
+        scroll_after: bool = True,
     ) -> None:
         """Render historical DB rows as if they had just streamed live.
 
@@ -708,43 +744,47 @@ class Nx01App(App):
         from .state import ToolStatus
 
         conv = self._panes[flavor].conversation
-        for i, row in enumerate(rows):
-            if unread_from_row is not None and i == unread_from_row:
-                new_count = len(rows) - unread_from_row
-                conv.insert_unread_divider(new_count)
+        with self.batch_update(), conv.suppress_scroll():
+            for i, row in enumerate(rows):
+                if unread_from_row is not None and i == unread_from_row:
+                    new_count = len(rows) - unread_from_row
+                    conv.insert_unread_divider(new_count)
 
-            role = row.get("role", "")
-            reasoning = row.get("reasoning") or row.get("reasoning_content") or ""
-            if reasoning:
-                t = conv.start_thinking()
-                t.append_chunk(reasoning)
-                conv.end_thinking(auto_collapse=True)
+                role = row.get("role", "")
+                reasoning = row.get("reasoning") or row.get("reasoning_content") or ""
+                if reasoning:
+                    t = conv.start_thinking()
+                    t.append_chunk(reasoning)
+                    conv.end_thinking(auto_collapse=True)
 
-            if role == "user":
-                content = row.get("content") or ""
-                if content:
-                    conv.add_user_message(str(content))
-            elif role == "assistant":
-                content = row.get("content") or ""
-                if content:
-                    conv.start_assistant(str(content))
-                    conv.end_assistant()
-                for tc in row.get("tool_calls") or []:
-                    name = tc.get("name") or tc.get("function", {}).get("name", "tool")
-                    args = tc.get("arguments") or tc.get("function", {}).get("arguments", "")
-                    call_id = tc.get("id", "")
-                    block = conv.start_tool(tool=str(name), args=str(args), call_id=call_id)
+                if role == "user":
+                    content = row.get("content") or ""
+                    if content:
+                        conv.add_user_message(str(content))
+                elif role == "assistant":
+                    content = row.get("content") or ""
+                    if content:
+                        conv.start_assistant(str(content))
+                        conv.end_assistant()
+                    for tc in row.get("tool_calls") or []:
+                        name = tc.get("name") or tc.get("function", {}).get("name", "tool")
+                        args = tc.get("arguments") or tc.get("function", {}).get("arguments", "")
+                        call_id = tc.get("id", "")
+                        block = conv.start_tool(tool=str(name), args=str(args), call_id=call_id)
+                        block.set_status(ToolStatus.DONE)
+                elif role == "tool":
+                    call_id = row.get("tool_call_id", "")
+                    tool_name = row.get("tool_name") or "tool"
+                    output = row.get("content") or ""
+                    block = conv.get_tool(call_id) if call_id else None
+                    if block is None:
+                        block = conv.start_tool(tool=str(tool_name), args="", call_id=call_id)
+                    if output:
+                        block.append_output(str(output))
                     block.set_status(ToolStatus.DONE)
-            elif role == "tool":
-                call_id = row.get("tool_call_id", "")
-                tool_name = row.get("tool_name") or "tool"
-                output = row.get("content") or ""
-                block = conv.get_tool(call_id) if call_id else None
-                if block is None:
-                    block = conv.start_tool(tool=str(tool_name), args="", call_id=call_id)
-                if output:
-                    block.append_output(str(output))
-                block.set_status(ToolStatus.DONE)
+        # Single scroll after all mounts — suppress_scroll is now released.
+        if scroll_after:
+            conv.scroll_end(animate=False)
 
     def action_open_memory(self) -> None:
         self.run_worker(self._open_memory(), exclusive=False)
@@ -824,8 +864,13 @@ class Nx01App(App):
     async def action_new_session(self) -> None:
         flavor = self._active_flavor()
         if flavor and flavor in self._states:
-            self._states[flavor].clear_for_new_turn()
-            self._states[flavor].messages = []
+            self._states[flavor] = FlavorState(name=flavor)
+            pane = self._panes.get(flavor)
+            if pane:
+                pane.conversation.reset_for_new_session()
+                pane.sync_sidebar(self._states[flavor])
+            self._active_session_id.pop(flavor, None)
+            self._save_session_state()
             self.notify(f"New session in {flavor}")
 
     def action_toggle_sidebar(self) -> None:
@@ -948,11 +993,9 @@ class Nx01App(App):
                 ts = row.get("timestamp") or row.get("created_at") or 0
                 if isinstance(ts, str):
                     try:
-                        from datetime import datetime
-
                         ts = (
-                            datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                            .replace(tzinfo=UTC)
+                            datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            .replace(tzinfo=datetime.UTC)
                             .timestamp()
                         )
                     except Exception:  # noqa: BLE001
@@ -964,7 +1007,7 @@ class Nx01App(App):
         self._states[flavor] = FlavorState(name=flavor)
         pane.conversation.reset_for_replay()
         self._active_session_id[flavor] = session_id
-        self._replay_messages(flavor, rows, unread_from_row=unread_from_row)
+        self._replay_messages(flavor, rows, unread_from_row=unread_from_row, scroll_after=False)
 
         if unread_from_row is not None and unread_from_row < len(rows):
             new_count = len(rows) - unread_from_row
