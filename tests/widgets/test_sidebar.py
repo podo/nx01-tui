@@ -514,3 +514,61 @@ async def test_sidebar_resize_clamps_to_max():
         sb.resize_step(1)
         await pilot.pause(0.05)
         assert int(sb.styles.width.value) == sb.MAX_WIDTH
+
+
+@pytest.mark.asyncio
+async def test_cron_section_renders_job_rows():
+    """CronSection.update_jobs() renders one row per cron job."""
+    from nx01_tui.tui.widgets.sidebar import CronSection
+
+    class _CronHost(App):
+        def compose(self) -> ComposeResult:
+            yield CronSection()
+
+    jobs = [
+        {"name": "daily-sync", "schedule": "0 0 * * *", "next_run": None, "status": "scheduled"},
+        {"name": "health-check", "schedule": "*/5 * * * *", "next_run": None, "status": "running"},
+    ]
+    app = _CronHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(CronSection)
+        section.update_jobs(jobs)
+        await pilot.pause(0.05)
+        rows = list(section.query_one("#cron-list").children)
+        assert len(rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_cron_section_shows_no_jobs_placeholder():
+    """CronSection shows 'no jobs' when empty."""
+    from nx01_tui.tui.widgets.sidebar import CronSection
+
+    class _CronHost(App):
+        def compose(self) -> ComposeResult:
+            yield CronSection()
+
+    app = _CronHost()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(CronSection)
+        section.update_jobs([])
+        await pilot.pause(0.05)
+        rows = list(section.query_one("#cron-list").children)
+        assert len(rows) == 1  # the "no jobs" placeholder
+
+
+@pytest.mark.asyncio
+async def test_cron_section_in_monitor_sidebar():
+    """CronSection is part of MonitorSidebar."""
+    from nx01_tui.tui.widgets.sidebar import CronSection
+
+    class _Host(App):
+        def compose(self) -> ComposeResult:
+            yield MonitorSidebar(flavor="assistant")
+
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        section = app.query_one(CronSection)
+        assert section is not None

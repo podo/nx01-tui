@@ -237,6 +237,14 @@ class Nx01App(App):
             except Exception:  # noqa: BLE001
                 pass
 
+            # Best-effort cron jobs fetch at startup
+            try:
+                jobs = await self.client.get_cron_jobs(name)
+                if name in self._states:
+                    self._states[name].cron_jobs = jobs
+            except Exception:  # noqa: BLE001
+                pass
+
         # Auto-focus the active flavor's input so the user can type immediately.
         self._focus_active_input()
 

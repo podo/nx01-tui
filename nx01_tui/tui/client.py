@@ -179,6 +179,15 @@ class Nx01Client:
         except Exception:  # noqa: BLE001
             return []
 
+    async def get_cron_jobs(self, flavor: str) -> list[dict]:
+        """Fetch cron job schedule for `flavor`. Returns [] on any error."""
+        try:
+            r = await self._client.get("/cron/jobs", params={"flavor": flavor})
+            r.raise_for_status()
+            return r.json().get("jobs", [])
+        except Exception:  # noqa: BLE001
+            return []
+
     # ── Skills ───────────────────────────────────────────────────────
 
     async def list_skills(self, flavor: str | None = None) -> list[dict[str, Any]]:

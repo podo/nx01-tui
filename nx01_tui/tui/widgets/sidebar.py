@@ -280,6 +280,50 @@ class McpSection(_Section):
             )
 
 
+# ── Cron jobs ─────────────────────────────────────────────────────────
+
+
+class CronSection(_Section):
+    """Cron job timeline — one row per scheduled job with status icon."""
+
+    DEFAULT_CSS = """
+    CronSection .cron-row { height: 1; color: $text-muted; }
+    """
+
+    def __init__(self) -> None:
+        super().__init__(title="Cron")
+
+    def compose(self) -> ComposeResult:
+        yield from super().compose()
+        yield Vertical(id="cron-list")
+
+    def update_jobs(self, jobs: list[dict]) -> None:
+        try:
+            container = self.query_one("#cron-list", Vertical)
+        except Exception:  # noqa: BLE001
+            return
+        container.remove_children()
+        if not jobs:
+            container.mount(Static("[dim]no jobs[/]", classes="cron-row"))
+            return
+        for job in jobs[:6]:
+            status = (job.get("status") or "unknown").lower()
+            color = (
+                "$success"
+                if status == "running"
+                else ("$warning" if status == "error" else "$text-muted")
+            )
+            icon = "▶" if status == "running" else "◷"
+            name = (job.get("name") or "?")[:18]
+            schedule = (job.get("schedule") or "")[:12]
+            container.mount(
+                Static(
+                    f"[{color}]{icon}[/] [bold]{name}[/] [dim]{schedule}[/]",
+                    classes="cron-row",
+                )
+            )
+
+
 # ── Context ────────────────────────────────────────────────────────────
 
 
@@ -446,6 +490,7 @@ class MonitorSidebar(Vertical):
         yield MemorySection()
         yield SkillsSection()
         yield McpSection()
+        yield CronSection()
         yield ContextSection()
         yield SessionSection()
 
@@ -471,6 +516,10 @@ class MonitorSidebar(Vertical):
             pass
         try:
             self.query_one(McpSection).update_servers(state.mcp_servers)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.query_one(CronSection).update_jobs(state.cron_jobs)
         except Exception:  # noqa: BLE001
             pass
         try:
